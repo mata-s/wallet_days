@@ -1,0 +1,250 @@
+import 'package:flutter/material.dart';
+import 'package:saiyome/models/expense.dart';
+import 'package:saiyome/models/isar_service.dart';
+import 'package:intl/intl.dart';
+
+class AddExpensePage extends StatefulWidget {
+  const AddExpensePage({super.key});
+
+  @override
+  State<AddExpensePage> createState() => _AddExpensePageState();
+}
+
+class _AddExpensePageState extends State<AddExpensePage> {
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _storeController = TextEditingController();
+
+  final NumberFormat _yenFormatter = NumberFormat('#,###');
+
+  String? _selectedCategory;
+  List<BudgetCategory> _categories = [];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _amountController.addListener(() {
+      final text = _amountController.text.replaceAll(',', '');
+      if (text.isEmpty) return;
+
+      final value = int.tryParse(text);
+      if (value == null) return;
+
+      final formatted = _yenFormatter.format(value);
+
+      if (formatted != _amountController.text) {
+        _amountController.value = TextEditingValue(
+          text: formatted,
+          selection: TextSelection.collapsed(offset: formatted.length),
+        );
+      }
+    });
+
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    final budgetSetting = await IsarService.getBudgetSetting();
+    if (!mounted) return;
+
+    final categories = budgetSetting?.categories ?? [];
+
+    setState(() {
+      _categories = categories;
+
+      // 「その他」を常に追加（存在しない場合）
+      if (!_categories.any((c) => c.name == 'その他')) {
+        _categories = [
+          ..._categories,
+          BudgetCategory()
+            ..name = 'その他'
+            ..badge = '✨'
+            ..budget = 0,
+        ];
+      }
+
+      if (_categories.isNotEmpty) {
+        _selectedCategory = _categories.first.name;
+      }
+    });
+  }
+
+  Future<void> _saveExpense() async {
+    final amountText = _amountController.text.trim();
+    final store = _storeController.text.trim();
+
+    if (_selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('カテゴリを設定してください')),
+      );
+      return;
+    }
+
+    if (amountText.isEmpty || store.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('金額と店名を入力してください')),
+      );
+      return;
+    }
+
+    final amount = int.tryParse(amountText.replaceAll(',', ''));
+
+    if (amount == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('金額は数字で入力してください')),
+      );
+      return;
+    }
+
+    final expense = Expense()
+      ..amount = amount
+      ..storeName = store
+      ..category = _selectedCategory!
+      ..createdAt = DateTime.now()
+      ..roastMessage = '昨日の$store、見ましたよ。';
+
+    await IsarService.saveExpense(expense);
+
+    if (!mounted) return;
+    Navigator.pop(context, true);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _storeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('支出を追加'),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('金額', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  hintText: '例: 700',
+                  border: OutlineInputBorder(),
+                  suffixText: '円',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('店名・サービス名', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _storeController,
+                decoration: const InputDecoration(
+                  hintText: '例: スタバ',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('カテゴリ', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              if (_categories.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE0E0E0)),
+                  ),
+                  child: const Text(
+                    '先に予算設定でカテゴリを登録してください',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ..._categories.map((category) {
+                      final isSelected = _selectedCategory == category.name;
+
+                      return ChoiceChip(
+                        label: Text('${category.badge} ${category.name}'),
+                        selected: isSelected,
+                        onSelected: (_) {
+                          setState(() {
+                            _selectedCategory = category.name;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ],
+                ),
+                if (_selectedCategory == 'その他')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '※ その他は、カテゴリーにない急な出費のときに使います',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _saveExpense,
+                  child: const Text('保存'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+       bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom > 0
+          ? Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                height: 44,
+                color: Colors.grey[100],
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      onTap: () => FocusScope.of(context).unfocus(),
+                      child: const Text(
+                        '完了',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}
