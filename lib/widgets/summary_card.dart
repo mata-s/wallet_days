@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class SummaryCard extends StatelessWidget {
+  final bool isLoading;
   final int remainingBudget;
   final int walletLifeDays;
   final int remainingPeriodDays;
@@ -16,6 +17,7 @@ class SummaryCard extends StatelessWidget {
 
   const SummaryCard({
     super.key,
+    required this.isLoading,
     required this.remainingBudget,
     required this.walletLifeDays,
     required this.remainingPeriodDays,
@@ -33,6 +35,17 @@ class SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final formatter = NumberFormat('#,###');
+
+    Widget skeleton({double width = 80, double height = 18, double radius = 8}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFECE7E2),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
+    }
 
     return Card(
       elevation: 1,
@@ -59,23 +72,27 @@ class SummaryCard extends StatelessWidget {
                   color: const Color(0xFFF6F1EC),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  '$cyclePeriod ・ 残り$remainingPeriodDays日',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: isLoading
+                    ? skeleton(width: 132, height: 14, radius: 999)
+                    : Text(
+                        '$cyclePeriod ・ 残り$remainingPeriodDays日',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ],
             const SizedBox(height: 10),
-            Text(
-              '¥${formatter.format(remainingBudget)}',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.8,
-              ),
-            ),
+            isLoading
+                ? skeleton(width: 180, height: 40, radius: 12)
+                : _AnimatedYenText(
+                  value: remainingBudget,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                      ),
+                    ),
             const SizedBox(height: 6),
             Text(
               'この期間で今使える残りのお金',
@@ -122,27 +139,42 @@ class SummaryCard extends StatelessWidget {
                                         : const Color(0xFFE8F5E9),
                                 borderRadius: BorderRadius.circular(999),
                               ),
-                              child: Text(
-                                '${(progress * 100).toStringAsFixed(0)}%',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: progress >= 1
-                                      ? Colors.red
-                                      : progress >= 0.75
-                                          ? Colors.orange
-                                          : Colors.green,
-                                ),
-                              ),
+                              child: isLoading
+                                  ? skeleton(width: 34, height: 12, radius: 999)
+                                  : Text(
+                                      '${(progress * 100).toStringAsFixed(0)}%',
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: progress >= 1
+                                            ? Colors.red
+                                            : progress >= 0.75
+                                                ? Colors.orange
+                                                : Colors.green,
+                                      ),
+                                    ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Text(
-                          '¥${formatter.format(usedAmount)} / ¥${formatter.format(totalBudget)}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        isLoading
+                            ? skeleton(width: 150, height: 22, radius: 8)
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _AnimatedYenText(
+                                    value: usedAmount!,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    ' / ¥${formatter.format(totalBudget)}',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
                         const SizedBox(height: 10),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(999),
@@ -176,21 +208,23 @@ class SummaryCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                progress >= 1
-                                    ? '予算オーバーしています'
-                                    : progress >= 0.75
-                                        ? '残りわずかです'
-                                        : 'まだ余裕があります',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: progress >= 1
-                                      ? Colors.red
-                                      : progress >= 0.75
-                                          ? Colors.orange
-                                          : Colors.green,
-                                ),
-                              ),
+                              child: isLoading
+                                  ? skeleton(width: 110, height: 16, radius: 8)
+                                  : Text(
+                                      progress >= 1
+                                          ? '予算オーバーしています'
+                                          : progress >= 0.75
+                                              ? '残りわずかです'
+                                              : 'まだ余裕があります',
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: progress >= 1
+                                            ? Colors.red
+                                            : progress >= 0.75
+                                                ? Colors.orange
+                                                : Colors.green,
+                                      ),
+                                    ),
                             ),
                           ],
                         ),
@@ -238,13 +272,17 @@ class SummaryCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'あと約$walletLifeDays日分',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
+                            isLoading
+                                ? skeleton(width: 120, height: 28, radius: 10)
+                                : _AnimatedCountText(
+                                       value: walletLifeDays,
+                                       prefix: 'あと約',
+                                       suffix: '日分',
+                                       style: theme.textTheme.headlineSmall?.copyWith(
+                                         fontWeight: FontWeight.w800,
+                                         letterSpacing: -0.3,
+                                      ),
+                                    ),
                             const SizedBox(height: 3),
                             Text(
                               'このペースで使った場合の目安',
@@ -271,25 +309,29 @@ class SummaryCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (dailySpendingPaceYen != null)
-                            Text(
-                              'あなたの1日平均支出：約¥${formatter.format(dailySpendingPaceYen)}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w600,
-                                height: 1.3,
-                              ),
-                            ),
+                            isLoading
+                                ? skeleton(width: 190, height: 16, radius: 8)
+                                : Text(
+                                    'あなたの1日平均支出：約¥${formatter.format(dailySpendingPaceYen)}',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: Colors.black87,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                    ),
+                                  ),
                           if (dailySpendingPaceYen != null && plannedDailyBudgetYen != null)
                             const SizedBox(height: 6),
                           if (plannedDailyBudgetYen != null)
-                            Text(
-                              '日割りで使える目安：約¥${formatter.format(plannedDailyBudgetYen)}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w600,
-                                height: 1.3,
-                              ),
-                            ),
+                            isLoading
+                                ? skeleton(width: 180, height: 16, radius: 8)
+                                : Text(
+                                    '日割りで使える目安：約¥${formatter.format(plannedDailyBudgetYen)}',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: Colors.black87,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                    ),
+                                  ),
                         ],
                       ),
                     ),
@@ -328,14 +370,23 @@ class SummaryCard extends StatelessWidget {
                     ),
                     if (remainingSubMessage != null) ...[
                       const SizedBox(height: 8),
-                      Text(
-                        remainingSubMessage!,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: Colors.black87,
-                          height: 1.45,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      isLoading
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                skeleton(width: double.infinity, height: 16, radius: 8),
+                                const SizedBox(height: 8),
+                                skeleton(width: 180, height: 16, radius: 8),
+                              ],
+                            )
+                          : Text(
+                              remainingSubMessage!,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: Colors.black87,
+                                height: 1.45,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                     ],
                   ],
                 ),
@@ -344,6 +395,110 @@ class SummaryCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AnimatedYenText extends StatefulWidget {
+  final int value;
+  final TextStyle? style;
+
+  const _AnimatedYenText({
+    required this.value,
+    required this.style,
+  });
+
+  @override
+  State<_AnimatedYenText> createState() => _AnimatedYenTextState();
+}
+
+class _AnimatedYenTextState extends State<_AnimatedYenText> {
+  late int _previousValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousValue = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedYenText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _previousValue = oldWidget.value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final formatter = NumberFormat('#,###');
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(
+        begin: _previousValue.toDouble(),
+        end: widget.value.toDouble(),
+      ),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Text(
+          '¥${formatter.format(value.round())}',
+          style: widget.style,
+        );
+      },
+    );
+  }
+}
+
+class _AnimatedCountText extends StatefulWidget {
+  final int value;
+  final String prefix;
+  final String suffix;
+  final TextStyle? style;
+
+  const _AnimatedCountText({
+    required this.value,
+    required this.prefix,
+    required this.suffix,
+    required this.style,
+  });
+
+  @override
+  State<_AnimatedCountText> createState() => _AnimatedCountTextState();
+}
+
+class _AnimatedCountTextState extends State<_AnimatedCountText> {
+  late int _previousValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousValue = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedCountText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _previousValue = oldWidget.value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(
+        begin: _previousValue.toDouble(),
+        end: widget.value.toDouble(),
+      ),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Text(
+          '${widget.prefix}${value.round()}${widget.suffix}',
+          style: widget.style,
+        );
+      },
     );
   }
 }

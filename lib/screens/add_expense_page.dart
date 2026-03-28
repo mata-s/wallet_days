@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:intl/intl.dart';
+import 'package:saiyome/services/expense_sync_service.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
 
 class AddExpensePage extends StatefulWidget {
-  const AddExpensePage({super.key});
+  final Expense? initialExpense;
+
+  const AddExpensePage({
+    super.key,
+    this.initialExpense,
+  });
 
   @override
   State<AddExpensePage> createState() => _AddExpensePageState();
@@ -39,6 +48,12 @@ class _AddExpensePageState extends State<AddExpensePage> {
         );
       }
     });
+    final initialExpense = widget.initialExpense;
+    if (initialExpense != null) {
+      _amountController.text = initialExpense.amount.toString();
+      _storeController.text = initialExpense.storeName;
+      _selectedCategory = initialExpense.category;
+    }
 
     _loadCategories();
   }
@@ -62,11 +77,46 @@ class _AddExpensePageState extends State<AddExpensePage> {
             ..budget = 0,
         ];
       }
-
-      if (_categories.isNotEmpty) {
+      if (_selectedCategory == null && _categories.isNotEmpty) {
         _selectedCategory = _categories.first.name;
       }
     });
+  }
+
+  Future<bool> _isPremiumUser() async {
+    try {
+      final customerInfo = await Purchases.getCustomerInfo();
+      return customerInfo.entitlements.active.containsKey('premium');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _showSavedExpenseNotification(Expense expense) async {
+    String title = expense.storeName.trim().isNotEmpty
+        ? '${expense.storeName} の支出を記録しました。'
+        : '支出を記録しました。';
+
+    String body = expense.category == 'その他'
+        ? 'その他カテゴリで${_yenFormatter.format(expense.amount)}円の支出を記録しました。'
+        : '${expense.category}カテゴリの支出を${_yenFormatter.format(expense.amount)}円で記録しました。';
+
+    const androidDetails = AndroidNotificationDetails(
+      'saiyome_channel',
+      '財布の通知',
+      channelDescription: '支出記録後の通知',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+
+    const details = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
+    );
   }
 
   Future<void> _saveExpense() async {
@@ -103,7 +153,19 @@ class _AddExpensePageState extends State<AddExpensePage> {
       ..createdAt = DateTime.now()
       ..roastMessage = '昨日の$store、見ましたよ。';
 
+    if (widget.initialExpense != null) {
+      expense.id = widget.initialExpense!.id;
+      expense.createdAt = widget.initialExpense!.createdAt;
+      expense.futureLogMessage = widget.initialExpense!.futureLogMessage;
+      expense.roastMessage = widget.initialExpense!.roastMessage;
+    }
     await IsarService.saveExpense(expense);
+
+    final isPremium = await _isPremiumUser();
+    if (isPremium) {
+      await ExpenseSyncService.syncExpense(expense);
+    }
+    await _showSavedExpenseNotification(expense);
 
     if (!mounted) return;
     Navigator.pop(context, true);
@@ -122,7 +184,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('支出を追加'),
+        title: Text(widget.initialExpense == null ? '支出を追加' : '支出を編集'),
         centerTitle: true,
       ),
       body: SafeArea(

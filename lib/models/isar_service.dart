@@ -27,6 +27,16 @@ class IsarService {
     });
   }
 
+  static Future<void> deleteExpense(int id) async {
+  await isar.writeTxn(() async {
+    await isar.expenses.delete(id);
+  });
+}
+
+static Future<Expense?> getExpenseById(int id) async {
+  return await isar.expenses.get(id);
+}
+
   static Future<List<Expense>> getExpenses() async {
     return isar.expenses.where().sortByCreatedAtDesc().findAll();
   }
@@ -100,6 +110,36 @@ class IsarService {
   static Future<void> saveBudgetHistory(BudgetHistory history) async {
     await isar.writeTxn(() async {
       await isar.budgetHistorys.put(history);
+    });
+  }
+
+  static Future<void> replaceAllData({
+    required List<Expense> expenses,
+    required BudgetSetting? budgetSetting,
+    required IncomeFixedCostSetting? incomeFixedCostSetting,
+    required List<BudgetHistory> budgetHistories,
+  }) async {
+    await isar.writeTxn(() async {
+      await isar.expenses.clear();
+      await isar.budgetSettings.clear();
+      await isar.incomeFixedCostSettings.clear();
+      await isar.budgetHistorys.clear();
+
+      if (expenses.isNotEmpty) {
+        await isar.expenses.putAll(expenses);
+      }
+
+      if (budgetSetting != null) {
+        await isar.budgetSettings.put(budgetSetting);
+      }
+
+      if (incomeFixedCostSetting != null) {
+        await isar.incomeFixedCostSettings.put(incomeFixedCostSetting);
+      }
+
+      if (budgetHistories.isNotEmpty) {
+        await isar.budgetHistorys.putAll(budgetHistories);
+      }
     });
   }
 }

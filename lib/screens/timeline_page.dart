@@ -17,6 +17,8 @@ class TimelinePage extends StatefulWidget {
   final String Function(String) categoryLabel;
   final IconData Function(String) iconForCategory;
   final String Function(DateTime) formatTimelineDate;
+  final Future<Expense?> Function(Expense)? onEditExpense;
+  final Future<bool> Function(Expense)? onDeleteExpense;
 
   const TimelinePage({
     super.key,
@@ -25,6 +27,8 @@ class TimelinePage extends StatefulWidget {
     required this.categoryLabel,
     required this.iconForCategory,
     required this.formatTimelineDate,
+    this.onEditExpense,
+    this.onDeleteExpense,
   });
 
   @override
@@ -32,6 +36,7 @@ class TimelinePage extends StatefulWidget {
 }
 
 class _TimelinePageState extends State<TimelinePage> {
+  late List<Expense> _expenses;
   TimelineFilterPeriod _selectedPeriod = TimelineFilterPeriod.all;
   late int _selectedYear;
   late int _selectedMonth;
@@ -40,13 +45,14 @@ class _TimelinePageState extends State<TimelinePage> {
   @override
   void initState() {
     super.initState();
+    _expenses = List<Expense>.from(widget.expenses);
     final now = DateTime.now();
     final years = _availableYears;
     _selectedYear = years.contains(now.year)
         ? now.year
         : (years.isNotEmpty ? years.first : now.year);
 
-    final months = widget.expenses
+    final months = _expenses
         .where((expense) => expense.createdAt.year == _selectedYear)
         .map((expense) => expense.createdAt.month)
         .toSet()
@@ -58,12 +64,20 @@ class _TimelinePageState extends State<TimelinePage> {
         : (months.isNotEmpty ? months.first : now.month);
   }
 
+  @override
+  void didUpdateWidget(covariant TimelinePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.expenses, widget.expenses)) {
+      _expenses = List<Expense>.from(widget.expenses);
+    }
+  }
+
   DateTime _normalize(DateTime date) {
     return DateTime(date.year, date.month, date.day);
   }
 
   List<int> get _availableYears {
-    final years = widget.expenses
+    final years = _expenses
         .map((expense) => expense.createdAt.year)
         .toSet()
         .toList()
@@ -77,7 +91,7 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   List<int> get _availableMonthsForSelectedYear {
-    final months = widget.expenses
+    final months = _expenses
         .where((expense) => expense.createdAt.year == _selectedYear)
         .map((expense) => expense.createdAt.month)
         .toSet()
@@ -96,7 +110,7 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   List<String> get _availableCategories {
-    final categories = widget.expenses
+    final categories = _expenses
         .map((expense) => widget.categoryLabel(expense.category))
         .toSet()
         .toList()
@@ -375,7 +389,7 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   List<Expense> get _filteredExpenses {
-    return widget.expenses
+    return _expenses
         .where((expense) => _matchesPeriod(expense) && _matchesCategory(expense))
         .toList();
   }
@@ -529,20 +543,82 @@ class _TimelinePageState extends State<TimelinePage> {
                   )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    children: _filteredExpenses.expand((expense) => [
-                      TimelineItem(
-                        title: expense.storeName,
-                        subtitle: widget.categoryLabel(expense.category),
-                        amount: '¥${widget.formatYen(expense.amount)}',
-                        icon: widget.iconForCategory(expense.category),
-                        date: widget.formatTimelineDate(expense.createdAt),
-                      ),
-                      if (expense.futureLogMessage != null) ...[
-                        const SizedBox(height: 10),
-                        FutureLogItem(message: expense.futureLogMessage!),
-                      ],
-                      const SizedBox(height: 10),
-                    ]).toList(),
+children: _filteredExpenses.expand((expense) => [
+  Dismissible(
+    key: ValueKey(expense.id),
+    direction: widget.onDeleteExpense != null
+        ? DismissDirection.endToStart
+        : DismissDirection.none,
+    background: Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+    ),
+    secondaryBackground: Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE1E1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Icon(
+        Icons.delete_outline,
+        color: Color(0xFFD64B4B),
+        size: 28,
+      ),
+    ),
+    confirmDismiss: widget.onDeleteExpense == null
+        ? null
+        : (_) async {
+            final deleted = await widget.onDeleteExpense!(expense);
+            if (deleted == true && mounted) {
+              setState(() {
+                _expenses.removeWhere((item) => item.id == expense.id);
+              });
+              return true;
+            }
+            return false;
+          },
+    child: TimelineItem(
+      title: expense.storeName,
+      subtitle: widget.categoryLabel(expense.category),
+      amount: '¥${widget.formatYen(expense.amount)}',
+      icon: widget.iconForCategory(expense.category),
+      date: widget.formatTimelineDate(expense.createdAt),
+      onEdit: widget.onEditExpense != null
+          ? () async {
+              final updatedExpense = await widget.onEditExpense!(expense);
+              if (updatedExpense == null || !mounted) return;
+
+              setState(() {
+                final index = _expenses.indexWhere(
+                  (item) => item.id == updatedExpense.id,
+                );
+                if (index != -1) {
+                  _expenses[index] = updatedExpense;
+                }
+              });
+            }
+          : null,
+      onDelete: widget.onDeleteExpense != null
+          ? () async {
+              final deleted = await widget.onDeleteExpense!(expense);
+              if (deleted != true || !mounted) return;
+
+              setState(() {
+                _expenses.removeWhere((item) => item.id == expense.id);
+              });
+            }
+          : null,
+    ),
+  ),
+  if (expense.futureLogMessage != null) ...[
+    const SizedBox(height: 10),
+    FutureLogItem(message: expense.futureLogMessage!),
+  ],
+  const SizedBox(height: 10),
+]).toList(),
                   ),
           ),
         ],

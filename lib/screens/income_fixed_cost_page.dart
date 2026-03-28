@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:saiyome/models/isar_service.dart';
+import 'package:saiyome/services/income_fixed_cost_sync_service.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 class MoneyThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -186,6 +188,15 @@ void _syncManualFixedCostFromDisplayedTotal() {
     );
   }
 
+  Future<bool> _isPremiumUser() async {
+    try {
+      final customerInfo = await Purchases.getCustomerInfo();
+      return customerInfo.entitlements.active.containsKey('premium');
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _incomeController.removeListener(_handleChanged);
@@ -284,6 +295,25 @@ void _syncFixedCostTotalFromSources() {
   Future<void> _save() async {
     FocusManager.instance.primaryFocus?.unfocus();
     await _persistValues();
+
+    final isPremium = await _isPremiumUser();
+    if (isPremium) {
+      await IncomeFixedCostSyncService.sync(
+        monthlyIncome: _income,
+        fixedCostTotal: _fixedCost,
+        items: _fixedCostControllers
+            .map(
+              (item) => {
+                'name': item['name']!.text.trim(),
+                'amount': int.tryParse(
+                      item['amount']!.text.replaceAll(',', '').trim(),
+                    ) ??
+                    0,
+              },
+            )
+            .toList(),
+      );
+    }
 
     if (!mounted) return;
 

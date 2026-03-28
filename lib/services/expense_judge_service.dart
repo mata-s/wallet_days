@@ -17,6 +17,9 @@ enum ExpenseJudgeTag {
   social,
   fashion,
   dailyGoods,
+  movie,
+  karaoke,
+  arcade,
   entertainment,
   travel,
   cafe,
@@ -33,6 +36,7 @@ enum ExpenseJudgeTag {
   ceremony,
   kids,
   family,
+  onlineShopping,
   gambling,
   luxury,
   sensitive,
@@ -99,8 +103,6 @@ class ExpenseJudgeService {
     'tsutaya',
     'ブックオフ',
     'ユニオン',
-    '映画',
-    'シネマ',
     'ライブ',
     'チケット',
     'ゲーム',
@@ -174,12 +176,56 @@ class ExpenseJudgeService {
     'ダイソー','セリア','キャンドゥ','ニトリ','無印','ロフト','ハンズ','カインズ','コーナン','ドンキ'
   ];
 
+  static const List<String> _movieKeywords = [
+    '映画館',
+    'シネマ',
+    'toho',
+    'イオンシネマ',
+    'movix',
+    '109シネマ',
+    'ユナイテッドシネマ',
+    '映画',
+  ];
+
+  static const List<String> _karaokeKeywords = [
+    'カラオケ',
+    'ジャンカラ',
+    'ビッグエコー',
+    'まねきねこ',
+    'joysound',
+    'コートダジュール',
+  ];
+
+  static const List<String> _arcadeKeywords = [
+    'ゲーセン',
+    'ゲームセンター',
+    'ラウンドワン',
+    'ラウワン',
+    'gigo',
+    'タイトー',
+    'namco',
+  ];
+
   static const List<String> _entertainmentKeywords = [
-    'ラウンドワン','ラウワン','カラオケ','ゲーセン','ゲームセンター','映画館','シネマ','温泉','サウナ','ボウリング'
+    '温泉',
+    'サウナ',
+    'ボウリング',
   ];
 
   static const List<String> _travelKeywords = [
     'ホテル','旅館','airbnb','じゃらん','楽天トラベル','expedia','booking','新幹線','ana','jal'
+  ];
+
+  static const List<String> _onlineShoppingKeywords = [
+    'amazon',
+    '楽天',
+    'rakuten',
+    'yahoo',
+    'zozo',
+    'qoo10',
+    'メルカリ',
+    'mercari',
+    '通販',
   ];
 
   static const List<String> _kidsKeywords = [
@@ -276,11 +322,8 @@ class ExpenseJudgeService {
         ExpenseJudgeTag.essential,
         if (amount >= 3000) ExpenseJudgeTag.bulkBuy,
       ]);
-      return const ExpenseJudgeResult(
-        tags: [
-          ExpenseJudgeTag.supermarket,
-          ExpenseJudgeTag.essential,
-        ],
+      return ExpenseJudgeResult(
+        tags: tags,
         severity: ExpenseJudgeSeverity.normal,
         shouldNotify: false,
         shouldAskAi: false,
@@ -331,6 +374,62 @@ class ExpenseJudgeService {
       );
     }
 
+    if (_containsAny(store, _movieKeywords) ||
+        category == '映画' ||
+        category == '娯楽' ||
+        category == 'エンタメ' ||
+        category == 'レジャー') {
+      return ExpenseJudgeResult(
+        tags: const [
+          ExpenseJudgeTag.movie,
+          ExpenseJudgeTag.entertainment,
+          ExpenseJudgeTag.discretionary,
+        ],
+        severity: _severityFromRate(spendingRate),
+        shouldNotify: true,
+        shouldAskAi: false,
+        reasonCode: 'movie_detected',
+      );
+    }
+
+    if (_containsAny(store, _karaokeKeywords) ||
+        category == 'カラオケ' ||
+        category == '娯楽' ||
+        category == 'エンタメ' ||
+        category == 'レジャー' ||
+        category == 'ストレス発散') {
+      return ExpenseJudgeResult(
+        tags: const [
+          ExpenseJudgeTag.karaoke,
+          ExpenseJudgeTag.entertainment,
+          ExpenseJudgeTag.discretionary,
+        ],
+        severity: _severityFromRate(spendingRate),
+        shouldNotify: true,
+        shouldAskAi: false,
+        reasonCode: 'karaoke_detected',
+      );
+    }
+
+    if (_containsAny(store, _arcadeKeywords) ||
+        category == 'ゲームセンター' ||
+        category == '娯楽' ||
+        category == 'エンタメ' ||
+        category == 'レジャー' ||
+        category == '遊び') {
+      return ExpenseJudgeResult(
+        tags: const [
+          ExpenseJudgeTag.arcade,
+          ExpenseJudgeTag.entertainment,
+          ExpenseJudgeTag.discretionary,
+        ],
+        severity: _severityFromRate(spendingRate),
+        shouldNotify: true,
+        shouldAskAi: false,
+        reasonCode: 'arcade_detected',
+      );
+    }
+
     if (_containsAny(store, _entertainmentKeywords) || category == '娯楽') {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.entertainment, ExpenseJudgeTag.discretionary],
@@ -348,6 +447,23 @@ class ExpenseJudgeService {
         shouldNotify: true,
         shouldAskAi: false,
         reasonCode: 'travel_detected',
+      );
+    }
+
+    if (_containsAny(store, _onlineShoppingKeywords) ||
+        category == 'ネットショッピング' ||
+        category == '通販' ||
+        category == '日用品' ||
+        category == '服') {
+      return ExpenseJudgeResult(
+        tags: const [
+          ExpenseJudgeTag.onlineShopping,
+          ExpenseJudgeTag.discretionary,
+        ],
+        severity: _severityFromRate(spendingRate),
+        shouldNotify: true,
+        shouldAskAi: false,
+        reasonCode: 'online_shopping_detected',
       );
     }
 
@@ -427,7 +543,10 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _healthKeywords) || category == '医療') {
+    if (_containsAny(store, _healthKeywords) ||
+        category == '医療' ||
+        category == '健康' ||
+        category == '薬') {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.health, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -437,7 +556,13 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _transportKeywords) || category == '交通') {
+    if (_containsAny(store, _transportKeywords) ||
+        category == '交通' ||
+        category == '交通費' ||
+        category == '電車' ||
+        category == 'バス' ||
+        category == 'ガソリン' ||
+        category == '駐車場') {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.transport, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,

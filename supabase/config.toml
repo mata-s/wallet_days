@@ -1,0 +1,33 @@
+
+[functions.generate-monthly-report]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-monthly-report/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate-monthly-report/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate-monthly-report/*.html" ]
+
+[functions.revenuecat-webhook]
+enabled = true
+verify_jwt = true
+import_map = "./functions/revenuecat-webhook/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/revenuecat-webhook/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/revenuecat-webhook/*.html" ]
+
+[functions.lassify-unknown-expense]
+enabled = true
+verify_jwt = true
+import_map = "./functions/lassify-unknown-expense/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/lassify-unknown-expense/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/lassify-unknown-expense/*.html" ]

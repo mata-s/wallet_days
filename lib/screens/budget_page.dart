@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:saiyome/screens/income_fixed_cost_page.dart';
+import 'package:saiyome/services/budget_setting_sync_service.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 class ThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -65,6 +67,15 @@ class _BudgetPageState extends State<BudgetPage> {
   int _cycleStartDay = 1;
   int _manualBudgetBuffer = 0;
   int _usableBudgetBase = 0;
+
+  Future<bool> _isPremiumUser() async {
+  try {
+    final customerInfo = await Purchases.getCustomerInfo();
+    return customerInfo.entitlements.active.containsKey('premium');
+  } catch (_) {
+    return false;
+  }
+}
 
   @override
 void initState() {
@@ -275,6 +286,11 @@ budgetSetting.categories = validCategories.map((e) {
 }).toList();
 
 await IsarService.saveBudgetSetting(budgetSetting);
+
+final isPremium = await _isPremiumUser();
+if (isPremium) {
+  await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
+}
 
 if (!mounted) return;
 Navigator.pop(context, true);
@@ -544,59 +560,55 @@ child: Column(
       ),
     ),
     const SizedBox(height: 12),
-    Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEDEDED)),
+    if (_hasUsableBudgetBase) ...[
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFEDEDED)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '今月の使える予算',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '¥${NumberFormat('#,###').format(_usableBudgetBase)}',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'あと使える金額',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _remainingUsableBudget >= 0
+                  ? '¥${NumberFormat('#,###').format(_remainingUsableBudget)}'
+                  : '-¥${NumberFormat('#,###').format(_remainingUsableBudget.abs())}',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: _remainingUsableBudget < 0 ? Colors.red : Colors.black87,
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '今月の使える予算',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.black54,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _hasUsableBudgetBase
-                ? '¥${NumberFormat('#,###').format(_usableBudgetBase)}'
-                : '未設定',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'あと使える金額',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.black54,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _hasUsableBudgetBase
-                ? (_remainingUsableBudget >= 0
-                    ? '¥${NumberFormat('#,###').format(_remainingUsableBudget)}'
-                    : '-¥${NumberFormat('#,###').format(_remainingUsableBudget.abs())}')
-                : '未設定',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: !_hasUsableBudgetBase
-                  ? null
-                  : (_remainingUsableBudget < 0 ? Colors.red : Colors.black87),
-            ),
-          ),
-        ],
-      ),
-    ),
-    const SizedBox(height: 12),
+      const SizedBox(height: 12),
+    ],
     TextField(
       controller: _totalBudgetController,
       keyboardType: TextInputType.number,
@@ -675,6 +687,9 @@ child: Column(
                             children: [
                               InkWell(
                                 onTap: () async {
+                                  FocusScope.of(context).unfocus();
+                                  FocusScope.of(context).requestFocus(FocusNode());
+
                                   final selected = await showDialog<String>(
                                     context: context,
                                     builder: (context) {
@@ -754,6 +769,8 @@ child: Column(
                                     setState(() {
                                       item['badge'] = selected;
                                     });
+
+                                    FocusScope.of(context).unfocus();
                                   }
                                 },
                                 borderRadius: BorderRadius.circular(14),

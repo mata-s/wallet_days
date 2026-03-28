@@ -197,6 +197,64 @@ class SpendingRuleService {
       return CategoryFit.acceptable;
     }
 
+    if (tags.contains(ExpenseJudgeTag.onlineShopping)) {
+      if (normalizedCategory == 'ネットショッピング' ||
+          normalizedCategory == '通販') {
+        return CategoryFit.fit;
+      }
+      if (normalizedCategory == '日用品' || normalizedCategory == '服') {
+        return CategoryFit.acceptable;
+      }
+      if (normalizedCategory == '趣味' || normalizedCategory == 'その他') {
+        return CategoryFit.mismatch;
+      }
+      return CategoryFit.acceptable;
+    }
+
+    if (tags.contains(ExpenseJudgeTag.movie)) {
+      if (normalizedCategory == '映画' ||
+          normalizedCategory == '娯楽' ||
+          normalizedCategory == 'エンタメ' ||
+          normalizedCategory == 'レジャー') {
+        return CategoryFit.fit;
+      }
+      if (normalizedCategory == '趣味' || normalizedCategory == 'デート') {
+        return CategoryFit.acceptable;
+      }
+      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      return CategoryFit.acceptable;
+    }
+
+    if (tags.contains(ExpenseJudgeTag.karaoke)) {
+      if (normalizedCategory == 'カラオケ' ||
+          normalizedCategory == '娯楽' ||
+          normalizedCategory == 'エンタメ' ||
+          normalizedCategory == 'レジャー') {
+        return CategoryFit.fit;
+      }
+      if (normalizedCategory == '趣味' ||
+          normalizedCategory == 'ストレス発散') {
+        return CategoryFit.acceptable;
+      }
+      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      return CategoryFit.acceptable;
+    }
+
+    if (tags.contains(ExpenseJudgeTag.arcade)) {
+      if (normalizedCategory == 'ゲームセンター' ||
+          normalizedCategory == '娯楽' ||
+          normalizedCategory == 'エンタメ' ||
+          normalizedCategory == 'レジャー' ||
+          normalizedCategory == '遊び') {
+        return CategoryFit.fit;
+      }
+      if (normalizedCategory == '趣味' || normalizedCategory == 'デート') {
+        return CategoryFit.acceptable;
+      }
+      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      return CategoryFit.acceptable;
+    }
+
     if (tags.contains(ExpenseJudgeTag.entertainment)) {
       if (normalizedCategory == '娯楽' || normalizedCategory == '趣味') {
         return CategoryFit.fit;
