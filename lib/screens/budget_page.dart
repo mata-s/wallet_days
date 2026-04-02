@@ -7,6 +7,8 @@ import 'package:saiyome/models/isar_service.dart';
 import 'package:saiyome/screens/income_fixed_cost_page.dart';
 import 'package:saiyome/services/budget_setting_sync_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:saiyome/models/budget_history.dart';
+import 'package:saiyome/services/budget_history_sync_service.dart';
 
 class ThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -150,6 +152,22 @@ Future<void> _loadIncomeFixedCostSetting() async {
   });
 }
 
+DateTime _currentPeriodStart(DateTime now) {
+  final startDay = _cycleStartDay.clamp(1, 28);
+  if (now.day >= startDay) {
+    return DateTime(now.year, now.month, startDay);
+  }
+  return DateTime(now.year, now.month - 1, startDay);
+}
+
+DateTime _currentPeriodEnd(DateTime periodStart) {
+  return DateTime(
+    periodStart.year,
+    periodStart.month + 1,
+    periodStart.day,
+  ).subtract(const Duration(days: 1));
+}
+
   int get _categoryBudgetSum {
     int total = 0;
     for (final item in _categoryControllers) {
@@ -287,11 +305,32 @@ budgetSetting.categories = validCategories.map((e) {
 
 await IsarService.saveBudgetSetting(budgetSetting);
 
+final now = DateTime.now();
+final periodStart = _currentPeriodStart(now);
+final periodEnd = _currentPeriodEnd(periodStart);
+
+final existingHistory = await IsarService.getBudgetHistoryByPeriod(
+  periodStart,
+  periodEnd,
+);
+
+final history = existingHistory ?? BudgetHistory();
+history
+  ..startDate = periodStart
+  ..endDate = periodEnd
+  ..totalBudget = totalBudget
+  ..totalExpense = existingHistory?.totalExpense ?? 0
+  ..isAchieved = existingHistory?.isAchieved ?? false
+  ..streak = existingHistory?.streak ?? 0
+  ..createdAt = existingHistory?.createdAt ?? now;
+
+await IsarService.saveBudgetHistory(history);
+
 final isPremium = await _isPremiumUser();
 if (isPremium) {
   await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
+  await BudgetHistorySyncService.syncBudgetHistory(history);
 }
-
 if (!mounted) return;
 Navigator.pop(context, true);
   }

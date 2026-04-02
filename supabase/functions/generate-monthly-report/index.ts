@@ -35,6 +35,7 @@ type BadgeResult = {
   rarity: "common" | "rare" | "epic";
 };
 
+
 type RankResult = {
   rank_key: string;
   rank_label: string;
@@ -43,6 +44,12 @@ type RankResult = {
   success_rate: number;
   current_streak: number;
   best_streak: number;
+};
+
+type TitleResult = {
+  title: string;
+  reason: string;
+  rarity: "common" | "rare" | "epic";
 };
 
 Deno.serve(async (req) => {
@@ -254,6 +261,7 @@ Deno.serve(async (req) => {
       topCategories: categoryJson.slice(0, 5),
       history: safeHistory,
     });
+    let aiTitle: TitleResult | null = null;
 
     if (useAi && openAiApiKey) {
       try {
@@ -288,8 +296,19 @@ Deno.serve(async (req) => {
         if (aiBadges.length > 0) {
           badges = aiBadges;
         }
-      } catch (_) {
-        // AI失敗時はルールベースにフォールバック
+
+        aiTitle = await generateAiTitle({
+          apiKey: openAiApiKey,
+          totalBudget,
+          totalSpent,
+          remainingAmount,
+          achieved,
+          topCategories: categoryJson.slice(0, 5),
+        });
+      } catch (error) {
+        console.log("[generate-monthly-report] AI block failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -335,6 +354,25 @@ Deno.serve(async (req) => {
       periodEnd,
       savedId: saved?.id ?? null,
     });
+
+    if (aiTitle) {
+      const { error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update({
+          current_title: aiTitle.title,
+          current_title_reason: aiTitle.reason,
+          current_title_rarity: aiTitle.rarity,
+          current_title_updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (profileUpdateError) throw profileUpdateError;
+      console.log("[generate-monthly-report] profile title updated", {
+        userId,
+        title: aiTitle.title,
+        rarity: aiTitle.rarity,
+      });
+    }
 
     if (badges.length > 0) {
       const badgeRows = badges.map((badge) => ({
@@ -439,6 +477,7 @@ function buildAdvice(args: {
   return "予算オーバーでした。高額な支出が出た日を振り返ると、次の期間で調整しやすくなります。";
 }
 
+
 function buildFallbackBadges(args: {
   achieved: boolean;
   totalBudget: number;
@@ -494,6 +533,108 @@ function buildFallbackBadges(args: {
   return badges.slice(0, 3);
 }
 
+async function generateAiTitle(args: {
+  apiKey: string;
+  totalBudget: number;
+  totalSpent: number;
+  remainingAmount: number;
+  achieved: boolean;
+  topCategories: Array<{ name: string; amount: number; ratio: number }>;
+}): Promise<TitleResult | null> {
+  const prompt = `
+あなたは家計アプリの称号生成AIです。
+
+以下のデータから、その人にぴったりの称号を1つだけ作ってください。
+
+ルール:
+- JSONのみ返す
+- title, reason, rarity を含む
+- titleは短くて印象的（例: 静かなる節約家）
+- reasonは自然な日本語で
+- rarityは common / rare / epic
+
+トーン:
+- 「かっこいい / やさしい / 少しユーモア」のどれかにする
+- クスッとできる軽い面白さを含めても良い
+- ただしふざけすぎない（あくまで愛着が湧くレベル）
+
+店舗・カテゴリの扱い:
+- カテゴリや店舗が強く偏っている場合のみ、それを称号に反映する
+- 無理に店舗名を使わない
+
+禁止:
+- ネガティブすぎる表現
+- 批判的・攻撃的な表現
+
+データ:
+予算: ${args.totalBudget}
+支出: ${args.totalSpent}
+残額: ${args.remainingAmount}
+達成: ${args.achieved}
+カテゴリ: ${JSON.stringify(args.topCategories)}
+`;
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: prompt,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.log("[generateAiTitle] request failed", {
+      status: response.status,
+      body: errorText,
+    });
+    throw new Error("OpenAI title request failed");
+  }
+
+  const jsonResponse = await response.json();
+  const text =
+    jsonResponse.output?.[0]?.content?.[0]?.text ??
+    jsonResponse.output_text ??
+    null;
+
+  console.log("[generateAiTitle] raw text", text);
+
+  if (typeof text !== "string" || !text.trim()) {
+    return null;
+  }
+
+  try {
+    const cleaned = text
+      .trim()
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned);
+    const title = String(parsed?.title ?? "").trim();
+    const reason = String(parsed?.reason ?? "").trim();
+
+    if (!title || !reason) return null;
+
+    return {
+      title,
+      reason,
+      rarity: normalizeRarity(parsed?.rarity),
+    };
+  } catch (error) {
+    console.log("[generateAiTitle] parse failed", {
+      error: error instanceof Error ? error.message : String(error),
+      text,
+    });
+    return null;
+  }
+}
+
 async function generateAiBadges(args: {
   apiKey: string;
   periodStart: string;
@@ -539,6 +680,11 @@ async function generateAiBadges(args: {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.log("[generateAiBadges] request failed", {
+      status: response.status,
+      body: errorText,
+    });
     throw new Error("OpenAI badge request failed");
   }
 
@@ -697,4 +843,68 @@ function rankLabel(rankKey: string): string {
     default:
       return "スターター";
   }
+}
+
+async function generateAiAdvice(args: {
+  apiKey: string;
+  periodStart: string;
+  periodEnd: string;
+  totalBudget: number;
+  totalSpent: number;
+  remainingAmount: number;
+  achieved: boolean;
+  topCategories: Array<{ name: string; amount: number; ratio: number }>;
+  historyText: string;
+}): Promise<string | null> {
+  const prompt = `
+あなたは家計アプリのアドバイス生成AIです。
+
+以下のデータから、ユーザーに対する短くてやさしいアドバイスを1つ生成してください。
+
+ルール:
+- 日本語で自然な文章
+- 2〜3文程度
+- 責めない・前向き・少し寄り添うトーン
+
+期間: ${args.periodStart} 〜 ${args.periodEnd}
+予算: ${args.totalBudget}
+支出: ${args.totalSpent}
+残額: ${args.remainingAmount}
+達成: ${args.achieved}
+カテゴリ: ${JSON.stringify(args.topCategories)}
+履歴: ${args.historyText}
+`;
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: prompt,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.log("[generateAiAdvice] request failed", {
+      status: response.status,
+      body: errorText,
+    });
+    throw new Error("OpenAI advice request failed");
+  }
+
+  const jsonResponse = await response.json();
+  const text =
+    jsonResponse.output?.[0]?.content?.[0]?.text ??
+    jsonResponse.output_text ??
+    null;
+
+  if (typeof text !== "string" || !text.trim()) {
+    return null;
+  }
+
+  return text.trim();
 }

@@ -21,17 +21,75 @@ class IsarService {
     );
   }
 
-  static Future<void> saveExpense(Expense expense) async {
+  static Future<void> _recalculateBudgetHistoryForDate(DateTime targetDate) async {
+    final histories = await isar.budgetHistorys.where().findAll();
+
+    BudgetHistory? matchedHistory;
+    for (final history in histories) {
+      final isInRange =
+          !targetDate.isBefore(history.startDate) && !targetDate.isAfter(history.endDate);
+      if (isInRange) {
+        matchedHistory = history;
+        break;
+      }
+    }
+
+    if (matchedHistory == null) return;
+
+    final expenses = await isar.expenses.where().findAll();
+    final totalExpense = expenses
+        .where(
+          (expense) =>
+              !expense.createdAt.isBefore(matchedHistory!.startDate) &&
+              !expense.createdAt.isAfter(matchedHistory.endDate),
+        )
+        .fold<int>(0, (sum, expense) => sum + expense.amount.toInt());
+
+    matchedHistory.totalExpense = totalExpense;
+    matchedHistory.isAchieved = matchedHistory.totalBudget > 0
+        ? totalExpense <= matchedHistory.totalBudget
+        : false;
+
     await isar.writeTxn(() async {
-      await isar.expenses.put(expense);
+      await isar.budgetHistorys.put(matchedHistory!);
     });
   }
 
+  static Future<void> _recalculateBudgetHistoryForDateRange(
+    DateTime? previousDate,
+    DateTime currentDate,
+  ) async {
+    if (previousDate != null) {
+      await _recalculateBudgetHistoryForDate(previousDate);
+    }
+    await _recalculateBudgetHistoryForDate(currentDate);
+  }
+
+  static Future<void> saveExpense(Expense expense) async {
+    DateTime? previousCreatedAt;
+    if (expense.id != Isar.autoIncrement) {
+      final existing = await isar.expenses.get(expense.id);
+      previousCreatedAt = existing?.createdAt;
+    }
+
+    await isar.writeTxn(() async {
+      await isar.expenses.put(expense);
+    });
+
+    await _recalculateBudgetHistoryForDateRange(previousCreatedAt, expense.createdAt);
+  }
+
   static Future<void> deleteExpense(int id) async {
-  await isar.writeTxn(() async {
-    await isar.expenses.delete(id);
-  });
-}
+    final existing = await isar.expenses.get(id);
+
+    await isar.writeTxn(() async {
+      await isar.expenses.delete(id);
+    });
+
+    if (existing != null) {
+      await _recalculateBudgetHistoryForDate(existing.createdAt);
+    }
+  }
 
 static Future<Expense?> getExpenseById(int id) async {
   return await isar.expenses.get(id);

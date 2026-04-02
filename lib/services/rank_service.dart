@@ -42,8 +42,9 @@ class RankService {
 
     final achievedCount = sorted.where((e) => e.isAchieved).length;
     final totalCount = sorted.length;
-    final streak = _calculateCurrentStreak(sorted);
-    final bestStreak = _calculateBestStreak(sorted);
+    final latest = sorted.last;
+    final streak = latest.streak;
+    final bestStreak = latest.bestStreak;
     final successRate = totalCount == 0 ? 0.0 : achievedCount / totalCount;
 
     final rankKey = _rankKeyFromStats(
@@ -70,12 +71,6 @@ class RankService {
     );
   }
 
-  static int calculateNextStreak(List<BudgetHistory> histories, bool nextAchieved) {
-    if (!nextAchieved) return 0;
-
-    final current = calculate(histories).streak;
-    return current + 1;
-  }
 
   static String _rankKeyFromStats({
     required int totalCount,
@@ -107,37 +102,6 @@ class RankService {
       default:
         return 'スターター';
     }
-  }
-
-  static int _calculateCurrentStreak(List<BudgetHistory> sorted) {
-    int streak = 0;
-
-    for (final history in sorted.reversed) {
-      if (!history.isAchieved) {
-        break;
-      }
-      streak += 1;
-    }
-
-    return streak;
-  }
-
-  static int _calculateBestStreak(List<BudgetHistory> sorted) {
-    int best = 0;
-    int current = 0;
-
-    for (final history in sorted) {
-      if (history.isAchieved) {
-        current += 1;
-        if (current > best) {
-          best = current;
-        }
-      } else {
-        current = 0;
-      }
-    }
-
-    return best;
   }
 
   static String _buildComment({

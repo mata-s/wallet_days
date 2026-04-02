@@ -3,6 +3,7 @@ import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:intl/intl.dart';
 import 'package:saiyome/services/expense_sync_service.dart';
+import 'package:saiyome/services/roast_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
@@ -67,7 +68,6 @@ class _AddExpensePageState extends State<AddExpensePage> {
     setState(() {
       _categories = categories;
 
-      // 「その他」を常に追加（存在しない場合）
       if (!_categories.any((c) => c.name == 'その他')) {
         _categories = [
           ..._categories,
@@ -93,13 +93,36 @@ class _AddExpensePageState extends State<AddExpensePage> {
   }
 
   Future<void> _showSavedExpenseNotification(Expense expense) async {
-    String title = expense.storeName.trim().isNotEmpty
-        ? '${expense.storeName} の支出を記録しました。'
-        : '支出を記録しました。';
+    final budgetSetting = await IsarService.getBudgetSetting();
+    final totalBudget = budgetSetting?.totalBudget ?? 0;
 
-    String body = expense.category == 'その他'
-        ? 'その他カテゴリで${_yenFormatter.format(expense.amount)}円の支出を記録しました。'
-        : '${expense.category}カテゴリの支出を${_yenFormatter.format(expense.amount)}円で記録しました。';
+    final latestCategoryBudget = budgetSetting?.categories
+        .where((category) => category.name == expense.category)
+        .map((category) => category.budget)
+        .cast<int?>()
+        .firstWhere((_) => true, orElse: () => null);
+
+    final expenses = await IsarService.getExpenses();
+    final usedAmount = expenses.fold<int>(
+      0,
+      (sum, item) => sum + item.amount,
+    );
+    final latestCategoryUsed = expenses
+        .where((item) => item.category == expense.category)
+        .fold<int>(0, (sum, item) => sum + item.amount);
+
+    final roastResult = await RoastService.build(
+      totalBudget: totalBudget,
+      usedAmount: usedAmount,
+      expenses: expenses,
+      dangerCategories: const [],
+      latestCategoryBudget: latestCategoryBudget,
+      latestCategoryUsed: latestCategoryUsed,
+      latestCategoryTagUsedAmounts: const {},
+    );
+
+    final title = roastResult.title;
+    final body = roastResult.notificationBody;
 
     const androidDetails = AndroidNotificationDetails(
       'saiyome_channel',
@@ -108,16 +131,27 @@ class _AddExpensePageState extends State<AddExpensePage> {
       importance: Importance.max,
       priority: Priority.high,
     );
+    const darwinDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
 
-    const details = NotificationDetails(android: androidDetails);
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: darwinDetails,
+      macOS: darwinDetails,
+    );
 
+        debugPrint('[AddExpensePage] immediate notification title=$title body=$body');
     await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      details,
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+      notificationDetails: details,
     );
   }
+
 
   Future<void> _saveExpense() async {
     final amountText = _amountController.text.trim();
@@ -256,17 +290,17 @@ class _AddExpensePageState extends State<AddExpensePage> {
                     }).toList(),
                   ],
                 ),
-                if (_selectedCategory == 'その他')
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '※ その他は、カテゴリーにない急な出費のときに使います',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
+              if (_selectedCategory == 'その他')
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '※ その他は、カテゴリーにない急な出費のときに使います',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
                     ),
                   ),
+                ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -280,10 +314,11 @@ class _AddExpensePageState extends State<AddExpensePage> {
           ),
         ),
       ),
-       bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom > 0
+      bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom > 0
           ? Padding(
               padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom),
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
                 height: 44,
                 color: Colors.grey[100],

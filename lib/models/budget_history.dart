@@ -21,6 +21,9 @@ class BudgetHistory {
   // 何ヶ月連続か（保存しておくと便利）
   int streak = 0;
 
+  // 過去最高の連続記録
+  int bestStreak = 0;
+
   // 作成日時
   late DateTime createdAt;
 }

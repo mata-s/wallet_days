@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:saiyome/services/monthly_report_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MonthlyReportPage extends StatefulWidget {
   final VoidCallback? onTapDetail;
@@ -29,8 +30,18 @@ class MonthlyReportPage extends StatefulWidget {
   }
 }
 
+class _MonthlyReportBundle {
+  final Map<String, dynamic>? report;
+  final Map<String, dynamic>? profile;
+
+  const _MonthlyReportBundle({
+    required this.report,
+    required this.profile,
+  });
+}
+
 class _MonthlyReportPageState extends State<MonthlyReportPage> {
-  Future<Map<String, dynamic>?>? _reportFuture;
+  Future<_MonthlyReportBundle>? _pageFuture;
 
   @override
   void initState() {
@@ -48,16 +59,38 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
   }
 
   void _setupFuture() {
-    _reportFuture = MonthlyReportService.getReportForPeriod(
+    _pageFuture = _loadPageData();
+  }
+
+  Future<_MonthlyReportBundle> _loadPageData() async {
+    final report = await MonthlyReportService.getReportForPeriod(
       periodStart: widget.periodStart,
       periodEnd: widget.periodEnd,
+    );
+
+    Map<String, dynamic>? profile;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select('current_title, current_title_reason, current_title_rarity')
+          .eq('id', userId)
+          .maybeSingle();
+      if (response != null) {
+        profile = Map<String, dynamic>.from(response);
+      }
+    }
+
+    return _MonthlyReportBundle(
+      report: report,
+      profile: profile,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _reportFuture,
+    return FutureBuilder<_MonthlyReportBundle>(
+      future: _pageFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildLoading(context);
@@ -67,12 +100,19 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
           return _buildError(context, snapshot.error.toString());
         }
 
-        final report = snapshot.data;
+        final bundle = snapshot.data;
+        final report = bundle?.report;
+        final profile = bundle?.profile;
         if (report == null) {
           return _buildEmpty(context);
         }
 
         final totalBudget = (report['total_budget'] as num?)?.toInt() ?? 0;
+        final currentTitle = ((profile?['current_title'] as String?) ?? '').trim();
+        final currentTitleReason =
+            ((profile?['current_title_reason'] as String?) ?? '').trim();
+        final currentTitleRarity =
+            ((profile?['current_title_rarity'] as String?) ?? 'common').trim();
         final totalSpent = (report['total_spent'] as num?)?.toInt() ?? 0;
         final remaining = (report['remaining_amount'] as num?)?.toInt() ?? 0;
         final achievementRate = totalBudget > 0
@@ -81,7 +121,8 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
         final summaryComment =
             (report['summary_text'] as String?)?.trim().isNotEmpty == true
                 ? report['summary_text'] as String
-                : ((report['advice_text'] as String?) ?? 'まだ月のレポートがありません。');
+                : 'まだ月のレポートがありません。';
+        final adviceText = ((report['advice_text'] as String?) ?? '').trim();
         final badges = ((report['badges_json'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
@@ -98,6 +139,10 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
           totalSpent: totalSpent,
           remaining: remaining,
           achievementRate: achievementRate,
+          currentTitle: currentTitle,
+          currentTitleReason: currentTitleReason,
+          currentTitleRarity: currentTitleRarity,
+          adviceText: adviceText,
           summaryComment: summaryComment,
           rank: rank,
           badges: badges,
@@ -256,6 +301,10 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     required int totalSpent,
     required int remaining,
     required double achievementRate,
+    required String currentTitle,
+    required String currentTitleReason,
+    required String currentTitleRarity,
+    required String adviceText,
     required String summaryComment,
     required Map<String, dynamic> rank,
     required List<Map<String, dynamic>> badges,
@@ -267,6 +316,8 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     final bestStreak = (rank['best_streak'] as num?)?.toInt() ?? 0;
     final achievedCount = (rank['achieved_count'] as num?)?.toInt() ?? 0;
     final totalCount = (rank['total_count'] as num?)?.toInt() ?? 0;
+    final hasTitle = currentTitle.isNotEmpty;
+    final hasAdvice = adviceText.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -330,6 +381,14 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   ],
                 ),
                 const SizedBox(height: 18),
+                if (hasTitle) ...[
+                  _TitleCard(
+                    title: currentTitle,
+                    reason: currentTitleReason,
+                    rarity: currentTitleRarity,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Row(
                   children: [
                     Expanded(
@@ -440,32 +499,42 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   const SizedBox(height: 16),
                 ],
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8F4),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '今月のまとめ',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        summaryComment,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.65,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+  width: double.infinity,
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: const Color(0xFFFFF8F4),
+    borderRadius: BorderRadius.circular(18),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        '今月のまとめ',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: Colors.black54,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (hasAdvice) ...[
+        Text(
+          adviceText,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            height: 1.65,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
+      Text(
+        summaryComment,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          height: 1.65,
+        ),
+      ),
+    ],
+  ),
+),
                 if (widget.onTapDetail != null) ...[
                   const SizedBox(height: 14),
                   SizedBox(
@@ -741,6 +810,99 @@ class _MiniInfoChip extends StatelessWidget {
             value,
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class _TitleCard extends StatelessWidget {
+  final String title;
+  final String reason;
+  final String rarity;
+
+  const _TitleCard({
+    required this.title,
+    required this.reason,
+    required this.rarity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    Color backgroundColor;
+    Color accentColor;
+    IconData icon;
+
+    switch (rarity.toLowerCase()) {
+      case 'epic':
+        backgroundColor = const Color(0xFFF4ECFF);
+        accentColor = const Color(0xFF7A4DCC);
+        icon = Icons.auto_awesome;
+        break;
+      case 'rare':
+        backgroundColor = const Color(0xFFEAF6FF);
+        accentColor = const Color(0xFF2E79B9);
+        icon = Icons.stars_rounded;
+        break;
+      default:
+        backgroundColor = const Color(0xFFF7F3EE);
+        accentColor = const Color(0xFF7A6254);
+        icon = Icons.workspace_premium_outlined;
+        break;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, size: 20, color: accentColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '今月の称号',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: accentColor,
+                  ),
+                ),
+                if (reason.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    reason,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      height: 1.6,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

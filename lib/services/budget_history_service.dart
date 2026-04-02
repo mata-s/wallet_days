@@ -1,11 +1,45 @@
+import 'dart:math' as math;
 import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
-import 'package:saiyome/services/rank_service.dart';
 import 'package:saiyome/services/budget_history_sync_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 class BudgetHistoryService {
+  static Future<BudgetHistory?> _findPreviousHistory(BudgetHistory current) async {
+    final histories = await IsarService.getBudgetHistories();
+
+    final previousCandidates = histories.where((history) {
+      return history.endDate.isBefore(current.startDate);
+    }).toList();
+
+    if (previousCandidates.isEmpty) return null;
+
+    previousCandidates.sort((a, b) => b.endDate.compareTo(a.endDate));
+    return previousCandidates.first;
+  }
+
+  static Future<void> _finalizeHistory(BudgetHistory history) async {
+    history.isAchieved = history.totalBudget > 0
+        ? history.totalExpense <= history.totalBudget
+        : false;
+
+    final previousHistory = await _findPreviousHistory(history);
+
+    if (history.isAchieved) {
+      history.streak = (previousHistory?.streak ?? 0) + 1;
+    } else {
+      history.streak = 0;
+    }
+
+    history.bestStreak = math.max(
+      history.streak,
+      previousHistory?.bestStreak ?? 0,
+    );
+
+    await IsarService.saveBudgetHistory(history);
+  }
+
   static Future<void> syncIfNeeded({
     required int cycleStartDay,
     required int totalBudget,
@@ -28,7 +62,6 @@ class BudgetHistoryService {
       previousCycleEnd,
     );
     print('[BudgetHistoryService] existing=${existing != null}');
-    if (existing != null) return;
 
     final expenses = await IsarService.getExpenses();
     print('[BudgetHistoryService] allExpenses=${expenses.length}');
@@ -59,19 +92,14 @@ class BudgetHistoryService {
       (sum, expense) => sum + expense.amount,
     );
 
-    final histories = await IsarService.getBudgetHistories();
-    final isAchieved = totalExpense <= totalBudget;
-
-    final history = BudgetHistory()
+    final history = existing ?? BudgetHistory()
       ..startDate = previousCycleStart
       ..endDate = previousCycleEnd
       ..totalBudget = totalBudget
       ..totalExpense = totalExpense
-      ..isAchieved = isAchieved
-      ..streak = RankService.calculateNextStreak(histories, isAchieved)
-      ..createdAt = DateTime.now();
+      ..createdAt = existing?.createdAt ?? DateTime.now();
 
-    await IsarService.saveBudgetHistory(history);
+    await _finalizeHistory(history);
     print('[BudgetHistoryService] save local history');
 
     final isPremium = await _isPremiumUser();

@@ -31,6 +31,7 @@ class BudgetHistorySyncService {
       'total_expense': history.totalExpense,
       'is_achieved': history.isAchieved,
       'streak': history.streak,
+      'best_streak': history.bestStreak,
       'created_at': history.createdAt.toIso8601String(),
     };
 
@@ -71,6 +72,7 @@ class BudgetHistorySyncService {
             'total_expense': history.totalExpense,
             'is_achieved': history.isAchieved,
             'streak': history.streak,
+            'best_streak': history.bestStreak,
             'created_at': history.createdAt.toIso8601String(),
           },
         )
