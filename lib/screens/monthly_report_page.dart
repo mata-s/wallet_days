@@ -42,10 +42,14 @@ class _MonthlyReportBundle {
 
 class _MonthlyReportPageState extends State<MonthlyReportPage> {
   Future<_MonthlyReportBundle>? _pageFuture;
+  late DateTime _displayedPeriodStart;
+  late DateTime _displayedPeriodEnd;
 
   @override
   void initState() {
     super.initState();
+    _displayedPeriodStart = widget.periodStart;
+    _displayedPeriodEnd = widget.periodEnd;
     _setupFuture();
   }
 
@@ -54,18 +58,26 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd) {
+      _displayedPeriodStart = widget.periodStart;
+      _displayedPeriodEnd = widget.periodEnd;
       _setupFuture();
     }
   }
 
   void _setupFuture() {
-    _pageFuture = _loadPageData();
+    _pageFuture = _loadPageData(
+      periodStart: _displayedPeriodStart,
+      periodEnd: _displayedPeriodEnd,
+    );
   }
 
-  Future<_MonthlyReportBundle> _loadPageData() async {
+  Future<_MonthlyReportBundle> _loadPageData({
+    required DateTime periodStart,
+    required DateTime periodEnd,
+  }) async {
     final report = await MonthlyReportService.getReportForPeriod(
-      periodStart: widget.periodStart,
-      periodEnd: widget.periodEnd,
+      periodStart: periodStart,
+      periodEnd: periodEnd,
     );
 
     Map<String, dynamic>? profile;
@@ -85,6 +97,23 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
       report: report,
       profile: profile,
     );
+  }
+
+  void _setDisplayedPeriod(DateTime start, DateTime end) {
+    setState(() {
+      _displayedPeriodStart = start;
+      _displayedPeriodEnd = end;
+      _setupFuture();
+    });
+  }
+
+  void _goToPreviousPeriod() {
+    final length =
+        _displayedPeriodEnd.difference(_displayedPeriodStart).inDays + 1;
+    final previousEnd =
+        _displayedPeriodStart.subtract(const Duration(days: 1));
+    final previousStart = previousEnd.subtract(Duration(days: length - 1));
+    _setDisplayedPeriod(previousStart, previousEnd);
   }
 
   @override
@@ -152,7 +181,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
   }
 
   String _resolvedPeriodText() {
-    return '${widget.periodStart.month}/${widget.periodStart.day} 〜 ${widget.periodEnd.month}/${widget.periodEnd.day}';
+    return '${_displayedPeriodStart.month}/${_displayedPeriodStart.day} 〜 ${_displayedPeriodEnd.month}/${_displayedPeriodEnd.day}';
   }
 
   Widget _buildLoading(BuildContext context) {
@@ -277,6 +306,28 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _goToPreviousPeriod,
+                      icon: const Icon(Icons.chevron_left_rounded),
+                      label: const Text('前の期間'),
+                    ),
+                    if (_displayedPeriodStart != widget.periodStart ||
+                        _displayedPeriodEnd != widget.periodEnd) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _setDisplayedPeriod(
+                          widget.periodStart,
+                          widget.periodEnd,
+                        ),
+                        icon: const Icon(Icons.restart_alt_rounded),
+                        label: const Text('最新に戻る'),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'この期間の月レポートはまだ作成されていません。',
@@ -381,6 +432,28 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   ],
                 ),
                 const SizedBox(height: 18),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _goToPreviousPeriod,
+                      icon: const Icon(Icons.chevron_left_rounded),
+                      label: const Text('前の期間'),
+                    ),
+                    if (_displayedPeriodStart != widget.periodStart ||
+                        _displayedPeriodEnd != widget.periodEnd) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _setDisplayedPeriod(
+                          widget.periodStart,
+                          widget.periodEnd,
+                        ),
+                        icon: const Icon(Icons.restart_alt_rounded),
+                        label: const Text('最新に戻る'),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
                 if (hasTitle) ...[
                   _TitleCard(
                     title: currentTitle,
@@ -421,7 +494,6 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   remaining: remaining,
                   isOver: isOver,
                 ),
-                const SizedBox(height: 16),
                 const SizedBox(height: 16),
                 if (badges.isNotEmpty) ...[
                   Text(
