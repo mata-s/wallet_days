@@ -1343,18 +1343,23 @@ const BudgetSettingSchema = CollectionSchema(
       name: r'cycleStartDay',
       type: IsarType.long,
     ),
-    r'totalBudget': PropertySchema(
+    r'pendingCycleStartDay': PropertySchema(
       id: 2,
+      name: r'pendingCycleStartDay',
+      type: IsarType.long,
+    ),
+    r'totalBudget': PropertySchema(
+      id: 3,
       name: r'totalBudget',
       type: IsarType.long,
     ),
     r'updatedAt': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'useCategoryBudget': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'useCategoryBudget',
       type: IsarType.bool,
     )
@@ -1404,9 +1409,10 @@ void _budgetSettingSerialize(
     object.categories,
   );
   writer.writeLong(offsets[1], object.cycleStartDay);
-  writer.writeLong(offsets[2], object.totalBudget);
-  writer.writeDateTime(offsets[3], object.updatedAt);
-  writer.writeBool(offsets[4], object.useCategoryBudget);
+  writer.writeLong(offsets[2], object.pendingCycleStartDay);
+  writer.writeLong(offsets[3], object.totalBudget);
+  writer.writeDateTime(offsets[4], object.updatedAt);
+  writer.writeBool(offsets[5], object.useCategoryBudget);
 }
 
 BudgetSetting _budgetSettingDeserialize(
@@ -1425,9 +1431,10 @@ BudgetSetting _budgetSettingDeserialize(
       [];
   object.cycleStartDay = reader.readLong(offsets[1]);
   object.id = id;
-  object.totalBudget = reader.readLong(offsets[2]);
-  object.updatedAt = reader.readDateTime(offsets[3]);
-  object.useCategoryBudget = reader.readBool(offsets[4]);
+  object.pendingCycleStartDay = reader.readLongOrNull(offsets[2]);
+  object.totalBudget = reader.readLong(offsets[3]);
+  object.updatedAt = reader.readDateTime(offsets[4]);
+  object.useCategoryBudget = reader.readBool(offsets[5]);
   return object;
 }
 
@@ -1449,10 +1456,12 @@ P _budgetSettingDeserializeProp<P>(
     case 1:
       return (reader.readLong(offset)) as P;
     case 2:
-      return (reader.readLong(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 3:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 4:
+      return (reader.readDateTime(offset)) as P;
+    case 5:
       return (reader.readBool(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1755,6 +1764,80 @@ extension BudgetSettingQueryFilter
   }
 
   QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'pendingCycleStartDay',
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'pendingCycleStartDay',
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'pendingCycleStartDay',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'pendingCycleStartDay',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'pendingCycleStartDay',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      pendingCycleStartDayBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'pendingCycleStartDay',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
       totalBudgetEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1906,6 +1989,20 @@ extension BudgetSettingQuerySortBy
     });
   }
 
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      sortByPendingCycleStartDay() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pendingCycleStartDay', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      sortByPendingCycleStartDayDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pendingCycleStartDay', Sort.desc);
+    });
+  }
+
   QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy> sortByTotalBudget() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'totalBudget', Sort.asc);
@@ -1975,6 +2072,20 @@ extension BudgetSettingQuerySortThenBy
     });
   }
 
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      thenByPendingCycleStartDay() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pendingCycleStartDay', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      thenByPendingCycleStartDayDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'pendingCycleStartDay', Sort.desc);
+    });
+  }
+
   QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy> thenByTotalBudget() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'totalBudget', Sort.asc);
@@ -2026,6 +2137,13 @@ extension BudgetSettingQueryWhereDistinct
   }
 
   QueryBuilder<BudgetSetting, BudgetSetting, QDistinct>
+      distinctByPendingCycleStartDay() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'pendingCycleStartDay');
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QDistinct>
       distinctByTotalBudget() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'totalBudget');
@@ -2064,6 +2182,13 @@ extension BudgetSettingQueryProperty
   QueryBuilder<BudgetSetting, int, QQueryOperations> cycleStartDayProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'cycleStartDay');
+    });
+  }
+
+  QueryBuilder<BudgetSetting, int?, QQueryOperations>
+      pendingCycleStartDayProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'pendingCycleStartDay');
     });
   }
 

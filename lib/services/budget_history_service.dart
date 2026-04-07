@@ -49,7 +49,7 @@ class BudgetHistoryService {
     final now = DateTime.now();
 
     final currentCycleStart = _currentCycleStart(now, safeStartDay);
-    final previousCycleStart = DateTime(
+    final previousCycleStart = _safeDate(
       currentCycleStart.year,
       currentCycleStart.month - 1,
       safeStartDay,
@@ -100,6 +100,15 @@ class BudgetHistoryService {
       ..createdAt = existing?.createdAt ?? DateTime.now();
 
     await _finalizeHistory(history);
+
+    final budgetSetting = await IsarService.getBudgetSetting();
+    if (budgetSetting != null && budgetSetting.pendingCycleStartDay != null) {
+      budgetSetting
+        ..cycleStartDay = budgetSetting.pendingCycleStartDay!
+        ..pendingCycleStartDay = null;
+      await IsarService.saveBudgetSetting(budgetSetting);
+    }
+
     print('[BudgetHistoryService] save local history');
 
     final isPremium = await _isPremiumUser();
@@ -126,6 +135,12 @@ class BudgetHistoryService {
   }) {
     final safeStartDay = cycleStartDay.clamp(1, 28);
     return _currentCycleStart(now, safeStartDay);
+  }
+
+  static DateTime _safeDate(int year, int month, int day) {
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final safeDay = day > lastDay ? lastDay : day;
+    return DateTime(year, month, safeDay);
   }
 
   static DateTime _currentCycleStart(DateTime now, int cycleStartDay) {

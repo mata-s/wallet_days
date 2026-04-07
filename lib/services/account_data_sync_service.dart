@@ -122,6 +122,8 @@ class AccountDataSyncService {
     final setting = BudgetSetting()
       ..totalBudget = (map['total_budget'] as num?)?.toInt() ?? 0
       ..cycleStartDay = (map['cycle_start_day'] as num?)?.toInt() ?? 1
+      ..pendingCycleStartDay =
+          (map['pending_cycle_start_day'] as num?)?.toInt()
       ..useCategoryBudget = (map['use_category_budget'] as bool?) ?? false
       ..updatedAt = DateTime.tryParse(map['updated_at']?.toString() ?? '') ??
           DateTime.now();
@@ -191,6 +193,7 @@ class AccountDataSyncService {
             ..totalExpense = (map['total_expense'] as num?)?.toInt() ?? 0
             ..isAchieved = (map['is_achieved'] as bool?) ?? false
             ..streak = (map['streak'] as num?)?.toInt() ?? 0
+            ..bestStreak = (map['best_streak'] as num?)?.toInt() ?? 0
             ..createdAt =
                 DateTime.tryParse(map['created_at']?.toString() ?? '') ??
                     DateTime.now();

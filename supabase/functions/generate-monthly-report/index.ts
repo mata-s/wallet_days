@@ -865,8 +865,12 @@ async function generateAiAdvice(args: {
 - 日本語で自然な文章
 - 2〜3文程度
 - 責めない・前向き・少し寄り添うトーン
+- アプリや人が会話・相談対応できるような表現は禁止
+- 「いつでも相談してください」「また相談してね」「気軽に話してください」などの文は禁止
+- サポート窓口・伴走者・友達のように振る舞わない
 
 期間: ${args.periodStart} 〜 ${args.periodEnd}
+出力の注意: 事実に基づいた振り返りコメントにし、存在しないサポート機能を匂わせないこと
 予算: ${args.totalBudget}
 支出: ${args.totalSpent}
 残額: ${args.remainingAmount}

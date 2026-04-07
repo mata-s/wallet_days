@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 
@@ -23,8 +24,8 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
 
   bool _isLoading = true;
   List<Expense> _expenses = [];
+  List<BudgetHistory> _budgetHistories = [];
   _UsagePeriod _selectedPeriod = _UsagePeriod.thisMonth;
-  int _totalBudget = 0;
   int _selectedYear = DateTime.now().year;
 
   @override
@@ -39,108 +40,123 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
     });
 
     final expenses = await IsarService.getExpenses();
-    final budgetSetting = await IsarService.getBudgetSetting();
+    final budgetHistories = await IsarService.getBudgetHistories();
     expenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     if (!mounted) return;
 
     setState(() {
       _expenses = expenses;
-      _totalBudget = budgetSetting?.totalBudget ?? 0;
+      _budgetHistories = budgetHistories;
       _isLoading = false;
     });
   }
 
-  List<Expense> get _filteredExpenses {
-    final now = DateTime.now();
 
-    switch (_selectedPeriod) {
-      case _UsagePeriod.thisMonth:
-        return _expenses
-            .where(
-              (e) =>
-                  e.createdAt.year == now.year &&
-                  e.createdAt.month == now.month,
-            )
-            .toList();
-      case _UsagePeriod.lastMonth:
-        final lastMonth = DateTime(now.year, now.month - 1);
-        return _expenses
-            .where(
-              (e) =>
-                  e.createdAt.year == lastMonth.year &&
-                  e.createdAt.month == lastMonth.month,
-            )
-            .toList();
-      case _UsagePeriod.byYear:
-        return _expenses
-            .where((e) => e.createdAt.year == _selectedYear)
-            .toList();
-      case _UsagePeriod.all:
-        return _expenses;
-    }
+List<BudgetHistory> get _sortedBudgetHistories {
+  final list = [..._budgetHistories];
+  list.sort((a, b) => b.endDate.compareTo(a.endDate));
+  return list;
+}
+
+BudgetHistory? get _currentHistory {
+  final now = DateTime.now();
+  for (final history in _sortedBudgetHistories) {
+    final isInRange =
+        !now.isBefore(history.startDate) && !now.isAfter(history.endDate);
+    if (isInRange) return history;
   }
+  return _sortedBudgetHistories.isEmpty ? null : _sortedBudgetHistories.first;
+}
+
+List<BudgetHistory> get _relevantBudgetHistories {
+  final sorted = _sortedBudgetHistories;
+
+  switch (_selectedPeriod) {
+    case _UsagePeriod.thisMonth:
+      final current = _currentHistory;
+      return current == null ? [] : [current];
+
+    case _UsagePeriod.lastMonth:
+      final current = _currentHistory;
+      if (current == null) return [];
+      final index = sorted.indexWhere((h) => h.id == current.id);
+      if (index < 0 || index + 1 >= sorted.length) return [];
+      return [sorted[index + 1]];
+
+    case _UsagePeriod.byYear:
+      return sorted.where((history) {
+        return history.startDate.year == _selectedYear ||
+            history.endDate.year == _selectedYear;
+      }).toList();
+
+    case _UsagePeriod.all:
+      return sorted;
+  }
+}
+
+List<Expense> get _filteredExpenses {
+  final histories = _relevantBudgetHistories;
+  if (histories.isEmpty) return [];
+
+  return _expenses.where((expense) {
+    for (final history in histories) {
+      final isInRange =
+          !expense.createdAt.isBefore(history.startDate) &&
+          !expense.createdAt.isAfter(history.endDate);
+      if (isInRange) return true;
+    }
+    return false;
+  }).toList();
+}
 
   int get _totalAmount =>
       _filteredExpenses.fold<int>(0, (sum, e) => sum + e.amount);
 
-  int get _allTimeTotal => _expenses.fold<int>(0, (sum, e) => sum + e.amount);
+  int get _allTimeTotal =>
+      _expenses.fold<int>(0, (sum, e) => sum + e.amount.toInt());
 
-  int get _budgetMonthCount {
-    switch (_selectedPeriod) {
-      case _UsagePeriod.thisMonth:
-      case _UsagePeriod.lastMonth:
-        return 1;
-      case _UsagePeriod.byYear:
-        final months = _filteredExpenses
-            .map((e) => '${e.createdAt.year}-${e.createdAt.month}')
-            .toSet();
-        return months.isEmpty ? 0 : months.length;
-      case _UsagePeriod.all:
-        final months = _expenses
-            .map((e) => '${e.createdAt.year}-${e.createdAt.month}')
-            .toSet();
-        return months.isEmpty ? 0 : months.length;
-    }
+
+
+int get _remainingBudget {
+  final histories = _relevantBudgetHistories;
+  if (histories.isEmpty) return 0;
+
+  final totalBudget = histories.fold<int>(
+    0,
+    (sum, history) => sum + history.totalBudget,
+  );
+
+  return totalBudget - _totalAmount;
+}
+
+int get _previousPeriodTotal {
+  final sorted = _sortedBudgetHistories;
+  final current = _currentHistory;
+  if (sorted.isEmpty || current == null) return 0;
+
+  switch (_selectedPeriod) {
+    case _UsagePeriod.thisMonth:
+      final index = sorted.indexWhere((h) => h.id == current.id);
+      if (index < 0 || index + 1 >= sorted.length) return 0;
+      return sorted[index + 1].totalExpense;
+
+    case _UsagePeriod.lastMonth:
+      final index = sorted.indexWhere((h) => h.id == current.id);
+      if (index < 0 || index + 2 >= sorted.length) return 0;
+      return sorted[index + 2].totalExpense;
+
+    case _UsagePeriod.byYear:
+      return sorted
+          .where((history) =>
+              history.startDate.year == _selectedYear - 1 ||
+              history.endDate.year == _selectedYear - 1)
+          .fold<int>(0, (sum, history) => sum + history.totalExpense);
+
+    case _UsagePeriod.all:
+      return 0;
   }
-
-  int get _remainingBudget {
-    if (_totalBudget <= 0) return 0;
-
-    final targetBudget = _totalBudget * _budgetMonthCount;
-    return targetBudget - _totalAmount;
-  }
-
-  int get _previousPeriodTotal {
-    final now = DateTime.now();
-
-    switch (_selectedPeriod) {
-      case _UsagePeriod.thisMonth:
-        final lastMonth = DateTime(now.year, now.month - 1);
-        return _expenses
-            .where(
-              (e) =>
-                  e.createdAt.year == lastMonth.year &&
-                  e.createdAt.month == lastMonth.month,
-            )
-            .fold<int>(0, (sum, e) => sum + e.amount.toInt());
-      case _UsagePeriod.lastMonth:
-        final twoMonthsAgo = DateTime(now.year, now.month - 2);
-        return _expenses
-            .where(
-              (e) =>
-                  e.createdAt.year == twoMonthsAgo.year &&
-                  e.createdAt.month == twoMonthsAgo.month,
-            )
-            .fold<int>(0, (sum, e) => sum + e.amount.toInt());
-      case _UsagePeriod.byYear:
-        return _expenses
-            .where((e) => e.createdAt.year == _selectedYear - 1)
-            .fold<int>(0, (sum, e) => sum + e.amount.toInt());
-      case _UsagePeriod.all:
-        return 0;
-    }
-  }
+}
 
   String get _selectedPeriodLabel {
     switch (_selectedPeriod) {
@@ -200,11 +216,14 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
     return rows.take(10).toList();
   }
 
-  List<int> get _availableYears {
-    final years = _expenses.map((e) => e.createdAt.year).toSet().toList();
-    years.sort((a, b) => b.compareTo(a));
-    return years;
-  }
+List<int> get _availableYears {
+  final years = _budgetHistories
+      .expand((history) => [history.startDate.year, history.endDate.year])
+      .toSet()
+      .toList();
+  years.sort((a, b) => b.compareTo(a));
+  return years;
+}
 
   void _showYearPicker() {
     FocusScope.of(context).requestFocus(FocusNode());
@@ -331,7 +350,7 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
                         comparisonLabel: _comparisonLabel,
                         expenseCount: _filteredExpenses.length,
                         remainingBudget: _remainingBudget,
-                        showRemaining: _totalBudget > 0 && _budgetMonthCount > 0,
+                        showRemaining: _relevantBudgetHistories.isNotEmpty,
                         yenFormatter: _yenFormatter,
                       ),
                       const SizedBox(height: 16),

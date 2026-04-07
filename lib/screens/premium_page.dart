@@ -102,21 +102,37 @@ class _PremiumPageState extends State<PremiumPage> {
 
       if (!mounted) return;
 
+      bool shouldOpenRegister = false;
+
       if (backupSucceeded) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('プレミアム登録が完了しました')),
         );
         if (_shouldShowRegisterPrompt()) {
-          await _showRegisterPrompt();
+          shouldOpenRegister = await _showRegisterPrompt();
         }
       } else {
         await _showBackupFailedDialog();
         if (!mounted) return;
         if (_shouldShowRegisterPrompt()) {
-          await _showRegisterPrompt();
+          shouldOpenRegister = await _showRegisterPrompt();
         }
       }
 
+      if (!mounted) return;
+      if (shouldOpenRegister) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const BackupRestorePage(
+              showSignUpTab: true,
+              initialIsSignUp: true,
+            ),
+          ),
+        );
+      }
+
+      if (!mounted) return;
       Navigator.pop(context, true);
     } on PlatformException catch (e) {
       final errorCode = PurchasesErrorHelper.getErrorCode(e);
@@ -162,21 +178,37 @@ class _PremiumPageState extends State<PremiumPage> {
 
         if (!mounted) return;
 
+        bool shouldOpenRegister = false;
+
         if (backupSucceeded) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('購入情報を復元しました')),
           );
           if (_shouldShowRegisterPrompt()) {
-            await _showRegisterPrompt();
+            shouldOpenRegister = await _showRegisterPrompt();
           }
         } else {
           await _showBackupFailedDialog();
           if (!mounted) return;
           if (_shouldShowRegisterPrompt()) {
-            await _showRegisterPrompt();
+            shouldOpenRegister = await _showRegisterPrompt();
           }
         }
 
+        if (!mounted) return;
+        if (shouldOpenRegister) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const BackupRestorePage(
+                showSignUpTab: true,
+                initialIsSignUp: true,
+              ),
+            ),
+          );
+        }
+
+        if (!mounted) return;
         Navigator.pop(context, true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -462,17 +494,42 @@ class _PremiumPageState extends State<PremiumPage> {
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(
-                        _isPremium
-                            ? '登録中'
-                            : _isCompletingPurchase
-                                ? '登録中'
-                                : _isPurchasing
-                                    ? '購入中...'
-                                    : '${_priceText()}で始める',
+                    : (_isPurchasing || _isCompletingPurchase || _isPremium)
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                _isCompletingPurchase
+                                    ? '登録処理中...'
+                                    : _isPurchasing
+                                        ? '購入中...'
+                                        : '登録中...',
+                              ),
+                            ],
+                          )
+                        : Text('${_priceText()}で始める'),
                       ),
               ),
-            ),
+            if (_isCompletingPurchase) ...[
+              const SizedBox(height: 10),
+              Text(
+                '購入後の確認と初回バックアップを進めています...',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
@@ -576,10 +633,10 @@ class _PremiumPageState extends State<PremiumPage> {
       ),
     );
   }
-  Future<void> _showRegisterPrompt() async {
-    if (!mounted) return;
+  Future<bool> _showRegisterPrompt() async {
+    if (!mounted) return false;
 
-    await showDialog<void>(
+    final result = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
@@ -651,16 +708,7 @@ class _PremiumPageState extends State<PremiumPage> {
                   height: 52,
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.of(dialogContext).pop();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const BackupRestorePage(
-                            showSignUpTab: true,
-                            initialIsSignUp: true,
-                          ),
-                        ),
-                      );
+                      Navigator.of(dialogContext).pop(true);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF4E6EF2),
@@ -681,7 +729,7 @@ class _PremiumPageState extends State<PremiumPage> {
                 ),
                 const SizedBox(height: 10),
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
                   child: const Text('あとで'),
                 ),
               ],
@@ -690,5 +738,6 @@ class _PremiumPageState extends State<PremiumPage> {
         );
       },
     );
+    return result == true;
   }
 }

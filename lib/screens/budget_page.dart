@@ -67,6 +67,8 @@ class _BudgetPageState extends State<BudgetPage> {
   bool _useCategoryBudget = true;
 
   int _cycleStartDay = 1;
+  int _activeCycleStartDay = 1;
+  bool _hasExistingBudgetSetting = false;
   int _manualBudgetBuffer = 0;
   int _usableBudgetBase = 0;
 
@@ -88,7 +90,18 @@ void initState() {
 
 Future<void> _loadBudgetSetting() async {
   final budgetSetting = await IsarService.getBudgetSetting();
-  if (budgetSetting == null || !mounted) return;
+  print('[BudgetPage] load budgetSetting exists=${budgetSetting != null}');
+  print('[BudgetPage] load cycleStartDay=${budgetSetting?.cycleStartDay}');
+  print('[BudgetPage] load pendingCycleStartDay=${budgetSetting?.pendingCycleStartDay}');
+  if (!mounted) return;
+  if (budgetSetting == null) {
+    setState(() {
+      _hasExistingBudgetSetting = false;
+      _activeCycleStartDay = 1;
+      _cycleStartDay = 1;
+    });
+    return;
+  }
 
   for (final item in _categoryControllers) {
     (item['nameController'] as TextEditingController).dispose();
@@ -111,7 +124,10 @@ Future<void> _loadBudgetSetting() async {
       ? ''
       : NumberFormat('#,###').format(_manualBudgetBuffer);
 
-  _cycleStartDay = budgetSetting.cycleStartDay == 0 ? 1 : budgetSetting.cycleStartDay;
+  _activeCycleStartDay =
+      budgetSetting.cycleStartDay == 0 ? 1 : budgetSetting.cycleStartDay;
+  _cycleStartDay = budgetSetting.pendingCycleStartDay ?? _activeCycleStartDay;
+  _hasExistingBudgetSetting = true;
 
   if (budgetSetting.categories.isEmpty) {
     _categoryControllers.add({
@@ -153,7 +169,7 @@ Future<void> _loadIncomeFixedCostSetting() async {
 }
 
 DateTime _currentPeriodStart(DateTime now) {
-  final startDay = _cycleStartDay.clamp(1, 28);
+  final startDay = _activeCycleStartDay.clamp(1, 28);
   if (now.day >= startDay) {
     return DateTime(now.year, now.month, startDay);
   }
@@ -288,51 +304,89 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
       });
     }
 
-final totalBudget = int.tryParse(totalBudgetText) ?? 0;
+    final totalBudget = int.tryParse(totalBudgetText) ?? 0;
+    final existingBudgetSetting = await IsarService.getBudgetSetting();
+    final isFirstSetup = existingBudgetSetting == null;
 
-final budgetSetting = BudgetSetting()
-  ..totalBudget = totalBudget
-  ..useCategoryBudget = _useCategoryBudget
-  ..cycleStartDay = _cycleStartDay
-  ..updatedAt = DateTime.now();
+    final appliedCycleStartDay =
+        isFirstSetup ? _cycleStartDay : _activeCycleStartDay;
 
-budgetSetting.categories = validCategories.map((e) {
-  return BudgetCategory()
-    ..name = e['name'] ?? ''
-    ..budget = int.tryParse(e['budget'] ?? '0') ?? 0
-    ..badge = e['badge'] ?? '✨';
-}).toList();
+    final pendingCycleStartDay =
+        isFirstSetup || _cycleStartDay == _activeCycleStartDay
+            ? null
+            : _cycleStartDay;
 
-await IsarService.saveBudgetSetting(budgetSetting);
+    final budgetSetting = BudgetSetting()
+      ..totalBudget = totalBudget
+      ..useCategoryBudget = _useCategoryBudget
+      ..cycleStartDay = appliedCycleStartDay
+      ..pendingCycleStartDay = pendingCycleStartDay
+      ..updatedAt = DateTime.now();
+    print('[BudgetPage] save isFirstSetup=$isFirstSetup');
+    print('[BudgetPage] save selectedCycleStartDay=$_cycleStartDay');
+    print('[BudgetPage] save activeCycleStartDay=$_activeCycleStartDay');
+    print('[BudgetPage] save cycleStartDay=${budgetSetting.cycleStartDay}');
+    print('[BudgetPage] save pendingCycleStartDay=${budgetSetting.pendingCycleStartDay}');
 
-final now = DateTime.now();
-final periodStart = _currentPeriodStart(now);
-final periodEnd = _currentPeriodEnd(periodStart);
+    budgetSetting.categories = validCategories.map((e) {
+      return BudgetCategory()
+        ..name = e['name'] ?? ''
+        ..budget = int.tryParse(e['budget'] ?? '0') ?? 0
+        ..badge = e['badge'] ?? '✨';
+    }).toList();
 
-final existingHistory = await IsarService.getBudgetHistoryByPeriod(
-  periodStart,
-  periodEnd,
-);
+    await IsarService.saveBudgetSetting(budgetSetting);
 
-final history = existingHistory ?? BudgetHistory();
-history
-  ..startDate = periodStart
-  ..endDate = periodEnd
-  ..totalBudget = totalBudget
-  ..totalExpense = existingHistory?.totalExpense ?? 0
-  ..isAchieved = existingHistory?.isAchieved ?? false
-  ..streak = existingHistory?.streak ?? 0
-  ..createdAt = existingHistory?.createdAt ?? now;
+    final shouldApplyNextPeriod =
+        !isFirstSetup && budgetSetting.pendingCycleStartDay != null;
 
-await IsarService.saveBudgetHistory(history);
+    final now = DateTime.now();
+    final periodStart = isFirstSetup
+        ? (() {
+            final startDay = appliedCycleStartDay.clamp(1, 28);
+            if (now.day >= startDay) {
+              return DateTime(now.year, now.month, startDay);
+            }
+            return DateTime(now.year, now.month - 1, startDay);
+          })()
+        : _currentPeriodStart(now);
+    final periodEnd = _currentPeriodEnd(periodStart);
 
-final isPremium = await _isPremiumUser();
-if (isPremium) {
-  await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
-  await BudgetHistorySyncService.syncBudgetHistory(history);
-}
-if (!mounted) return;
-Navigator.pop(context, true);
+    final existingHistory = await IsarService.getBudgetHistoryByPeriod(
+      periodStart,
+      periodEnd,
+    );
+
+    if (!shouldApplyNextPeriod) {
+      final history = existingHistory ?? BudgetHistory();
+      history
+        ..startDate = periodStart
+        ..endDate = periodEnd
+        ..totalBudget = totalBudget
+        ..totalExpense = existingHistory?.totalExpense ?? 0
+        ..isAchieved = existingHistory?.isAchieved ?? false
+        ..streak = existingHistory?.streak ?? 0
+        ..createdAt = existingHistory?.createdAt ?? now;
+
+      await IsarService.saveBudgetHistory(history);
+    }
+
+    final isPremium = await _isPremiumUser();
+    if (isPremium) {
+      await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
+
+      if (!shouldApplyNextPeriod) {
+        final latestHistory = await IsarService.getBudgetHistoryByPeriod(
+          periodStart,
+          periodEnd,
+        );
+        if (latestHistory != null) {
+          await BudgetHistorySyncService.syncBudgetHistory(latestHistory);
+        }
+      }
+    }
+    if (!mounted) return;
+    Navigator.pop(context, true);
   }
 
   void _showCycleStartDayPicker() {
@@ -410,7 +464,20 @@ Navigator.pop(context, true);
     );
   }
 
+  DateTime _previewPeriodStart(DateTime now, int cycleStartDay) {
+    final startDay = cycleStartDay.clamp(1, 28);
+    if (now.day >= startDay) {
+      return DateTime(now.year, now.month, startDay);
+    }
+    return DateTime(now.year, now.month - 1, startDay);
+  }
+
   Widget _buildStartDayCard(ThemeData theme) {
+    final now = DateTime.now();
+    final previewStart = _previewPeriodStart(now, _cycleStartDay);
+    final previewEnd = _currentPeriodEnd(previewStart);
+    final previewText =
+        '${previewStart.month}/${previewStart.day}〜${previewEnd.month}/${previewEnd.day}';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -433,7 +500,56 @@ Navigator.pop(context, true);
               color: Colors.black54,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            '例: $previewText',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.black45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 8),
+          if (_hasExistingBudgetSetting && _cycleStartDay != _activeCycleStartDay) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF6EC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFF1D8B5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '変更は保存されています',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF8A5A22),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '現在: 毎月 $_activeCycleStartDay 日から',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF8A5A22),
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                  Text(
+                    '次回: 毎月 $_cycleStartDay 日から',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF8A5A22),
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           InkWell(
             onTap: _showCycleStartDayPicker,
             borderRadius: BorderRadius.circular(12),
@@ -451,7 +567,10 @@ Navigator.pop(context, true);
                 children: [
                   Expanded(
                     child: Text(
-                      '毎月 $_cycleStartDay 日から',
+                      _hasExistingBudgetSetting &&
+                              _cycleStartDay != _activeCycleStartDay
+                          ? '毎月 $_cycleStartDay 日から（次回反映予定）'
+                          : '毎月 $_cycleStartDay 日から',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -548,7 +667,6 @@ Navigator.pop(context, true);
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isNarrow = MediaQuery.of(context).size.width < 380;
 
   return Scaffold(
       appBar: AppBar(
@@ -558,22 +676,13 @@ Navigator.pop(context, true);
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          isNarrow
-              ? Column(
-                  children: [
-                    _buildStartDayCard(theme),
-                    const SizedBox(height: 12),
-                    _buildIncomeCard(theme),
-                  ],
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _buildStartDayCard(theme)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildIncomeCard(theme)),
-                  ],
-                ),
+          Column(
+            children: [
+              _buildStartDayCard(theme),
+              const SizedBox(height: 12),
+              _buildIncomeCard(theme),
+            ],
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),

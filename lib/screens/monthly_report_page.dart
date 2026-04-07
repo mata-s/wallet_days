@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:saiyome/services/monthly_report_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MonthlyReportPage extends StatefulWidget {
@@ -30,26 +29,24 @@ class MonthlyReportPage extends StatefulWidget {
   }
 }
 
-class _MonthlyReportBundle {
-  final Map<String, dynamic>? report;
+
+class _MonthlyReportListBundle {
+  final List<Map<String, dynamic>> reports;
   final Map<String, dynamic>? profile;
 
-  const _MonthlyReportBundle({
-    required this.report,
+  const _MonthlyReportListBundle({
+    required this.reports,
     required this.profile,
   });
 }
 
 class _MonthlyReportPageState extends State<MonthlyReportPage> {
-  Future<_MonthlyReportBundle>? _pageFuture;
-  late DateTime _displayedPeriodStart;
-  late DateTime _displayedPeriodEnd;
+  Future<_MonthlyReportListBundle>? _pageFuture;
+  int _currentReportIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _displayedPeriodStart = widget.periodStart;
-    _displayedPeriodEnd = widget.periodEnd;
     _setupFuture();
   }
 
@@ -58,67 +55,58 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd) {
-      _displayedPeriodStart = widget.periodStart;
-      _displayedPeriodEnd = widget.periodEnd;
+      _currentReportIndex = 0;
       _setupFuture();
     }
   }
 
   void _setupFuture() {
-    _pageFuture = _loadPageData(
-      periodStart: _displayedPeriodStart,
-      periodEnd: _displayedPeriodEnd,
-    );
+    _pageFuture = _loadPageData();
   }
 
-  Future<_MonthlyReportBundle> _loadPageData({
-    required DateTime periodStart,
-    required DateTime periodEnd,
-  }) async {
-    final report = await MonthlyReportService.getReportForPeriod(
-      periodStart: periodStart,
-      periodEnd: periodEnd,
-    );
-
-    Map<String, dynamic>? profile;
+  Future<_MonthlyReportListBundle> _loadPageData() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    List<Map<String, dynamic>> reports = const [];
+    Map<String, dynamic>? profile;
+
     if (userId != null) {
-      final response = await Supabase.instance.client
+      final reportsResponse = await Supabase.instance.client
+          .from('monthly_reports')
+          .select('period_start, period_end, total_budget, total_spent, remaining_amount, summary_text, advice_text, badges_json, rank_json')
+          .eq('user_id', userId)
+          .order('period_start', ascending: false);
+
+      reports = (reportsResponse as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
+      final profileResponse = await Supabase.instance.client
           .from('profiles')
           .select('current_title, current_title_reason, current_title_rarity')
           .eq('id', userId)
           .maybeSingle();
-      if (response != null) {
-        profile = Map<String, dynamic>.from(response);
+      if (profileResponse != null) {
+        profile = Map<String, dynamic>.from(profileResponse);
       }
     }
 
-    return _MonthlyReportBundle(
-      report: report,
+    return _MonthlyReportListBundle(
+      reports: reports,
       profile: profile,
     );
   }
 
-  void _setDisplayedPeriod(DateTime start, DateTime end) {
+  void _goToPreviousPeriod(int reportCount) {
+    if (_currentReportIndex + 1 >= reportCount) return;
     setState(() {
-      _displayedPeriodStart = start;
-      _displayedPeriodEnd = end;
-      _setupFuture();
+      _currentReportIndex += 1;
     });
-  }
-
-  void _goToPreviousPeriod() {
-    final length =
-        _displayedPeriodEnd.difference(_displayedPeriodStart).inDays + 1;
-    final previousEnd =
-        _displayedPeriodStart.subtract(const Duration(days: 1));
-    final previousStart = previousEnd.subtract(Duration(days: length - 1));
-    _setDisplayedPeriod(previousStart, previousEnd);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_MonthlyReportBundle>(
+    return FutureBuilder<_MonthlyReportListBundle>(
       future: _pageFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -130,11 +118,15 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
         }
 
         final bundle = snapshot.data;
-        final report = bundle?.report;
+        final reports = bundle?.reports ?? const <Map<String, dynamic>>[];
         final profile = bundle?.profile;
-        if (report == null) {
-          return _buildEmpty(context);
+        if (reports.isEmpty) {
+          return _buildEmpty(context, isViewingLatest: true, reportCount: 0);
         }
+
+        final safeIndex = _currentReportIndex.clamp(0, reports.length - 1);
+        final report = reports[safeIndex];
+        final isViewingLatest = safeIndex == 0;
 
         final totalBudget = (report['total_budget'] as num?)?.toInt() ?? 0;
         final currentTitle = ((profile?['current_title'] as String?) ?? '').trim();
@@ -163,11 +155,13 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
         return _buildContent(
           context,
           title: '月のレポート',
-          periodText: _resolvedPeriodText(),
+          periodText: _resolvedPeriodText(report),
           totalBudget: totalBudget,
           totalSpent: totalSpent,
           remaining: remaining,
           achievementRate: achievementRate,
+          isViewingLatest: isViewingLatest,
+          reportCount: reports.length,
           currentTitle: currentTitle,
           currentTitleReason: currentTitleReason,
           currentTitleRarity: currentTitleRarity,
@@ -180,8 +174,16 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     );
   }
 
-  String _resolvedPeriodText() {
-    return '${_displayedPeriodStart.month}/${_displayedPeriodStart.day} 〜 ${_displayedPeriodEnd.month}/${_displayedPeriodEnd.day}';
+  String _resolvedPeriodText(Map<String, dynamic> report) {
+    final rawStart = report['period_start'] as String?;
+    final rawEnd = report['period_end'] as String?;
+    if (rawStart == null || rawEnd == null) return '';
+
+    final start = DateTime.tryParse(rawStart)?.toLocal();
+    final end = DateTime.tryParse(rawEnd)?.toLocal();
+    if (start == null || end == null) return '';
+
+    return '${start.month}/${start.day} 〜 ${end.month}/${end.day}';
   }
 
   Widget _buildLoading(BuildContext context) {
@@ -272,7 +274,11 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     );
   }
 
-  Widget _buildEmpty(BuildContext context) {
+  Widget _buildEmpty(
+    BuildContext context, {
+    required bool isViewingLatest,
+    required int reportCount,
+  }) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
@@ -297,10 +303,10 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (_resolvedPeriodText().isNotEmpty) ...[
+                if (!isViewingLatest) ...[
                   const SizedBox(height: 6),
                   Text(
-                    _resolvedPeriodText(),
+                    '過去の期間を表示中',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.black54,
                     ),
@@ -310,18 +316,18 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                 Row(
                   children: [
                     OutlinedButton.icon(
-                      onPressed: _goToPreviousPeriod,
+                      onPressed: reportCount > 0 ? () => _goToPreviousPeriod(reportCount) : null,
                       icon: const Icon(Icons.chevron_left_rounded),
                       label: const Text('前の期間'),
                     ),
-                    if (_displayedPeriodStart != widget.periodStart ||
-                        _displayedPeriodEnd != widget.periodEnd) ...[
+                    if (!isViewingLatest) ...[
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
-                        onPressed: () => _setDisplayedPeriod(
-                          widget.periodStart,
-                          widget.periodEnd,
-                        ),
+                        onPressed: () {
+                          setState(() {
+                            _currentReportIndex = 0;
+                          });
+                        },
                         icon: const Icon(Icons.restart_alt_rounded),
                         label: const Text('最新に戻る'),
                       ),
@@ -352,6 +358,8 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     required int totalSpent,
     required int remaining,
     required double achievementRate,
+    required bool isViewingLatest,
+    required int reportCount,
     required String currentTitle,
     required String currentTitleReason,
     required String currentTitleRarity,
@@ -435,18 +443,18 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                 Row(
                   children: [
                     OutlinedButton.icon(
-                      onPressed: _goToPreviousPeriod,
+                      onPressed: () => _goToPreviousPeriod(reportCount),
                       icon: const Icon(Icons.chevron_left_rounded),
                       label: const Text('前の期間'),
                     ),
-                    if (_displayedPeriodStart != widget.periodStart ||
-                        _displayedPeriodEnd != widget.periodEnd) ...[
+                    if (!isViewingLatest) ...[
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
-                        onPressed: () => _setDisplayedPeriod(
-                          widget.periodStart,
-                          widget.periodEnd,
-                        ),
+                        onPressed: () {
+                          setState(() {
+                            _currentReportIndex = 0;
+                          });
+                        },
                         icon: const Icon(Icons.restart_alt_rounded),
                         label: const Text('最新に戻る'),
                       ),

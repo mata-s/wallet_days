@@ -30,6 +30,7 @@ class BudgetSetting {
   late int totalBudget;
   late bool useCategoryBudget;
   late int cycleStartDay;
+  int? pendingCycleStartDay;
   late DateTime updatedAt;
   List<BudgetCategory> categories = [];
 }

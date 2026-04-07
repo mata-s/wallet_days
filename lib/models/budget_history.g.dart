@@ -17,38 +17,43 @@ const BudgetHistorySchema = CollectionSchema(
   name: r'BudgetHistory',
   id: 7215359735087831620,
   properties: {
-    r'createdAt': PropertySchema(
+    r'bestStreak': PropertySchema(
       id: 0,
+      name: r'bestStreak',
+      type: IsarType.long,
+    ),
+    r'createdAt': PropertySchema(
+      id: 1,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'endDate': PropertySchema(
-      id: 1,
+      id: 2,
       name: r'endDate',
       type: IsarType.dateTime,
     ),
     r'isAchieved': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'isAchieved',
       type: IsarType.bool,
     ),
     r'startDate': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'startDate',
       type: IsarType.dateTime,
     ),
     r'streak': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'streak',
       type: IsarType.long,
     ),
     r'totalBudget': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'totalBudget',
       type: IsarType.long,
     ),
     r'totalExpense': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'totalExpense',
       type: IsarType.long,
     )
@@ -82,13 +87,14 @@ void _budgetHistorySerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeDateTime(offsets[0], object.createdAt);
-  writer.writeDateTime(offsets[1], object.endDate);
-  writer.writeBool(offsets[2], object.isAchieved);
-  writer.writeDateTime(offsets[3], object.startDate);
-  writer.writeLong(offsets[4], object.streak);
-  writer.writeLong(offsets[5], object.totalBudget);
-  writer.writeLong(offsets[6], object.totalExpense);
+  writer.writeLong(offsets[0], object.bestStreak);
+  writer.writeDateTime(offsets[1], object.createdAt);
+  writer.writeDateTime(offsets[2], object.endDate);
+  writer.writeBool(offsets[3], object.isAchieved);
+  writer.writeDateTime(offsets[4], object.startDate);
+  writer.writeLong(offsets[5], object.streak);
+  writer.writeLong(offsets[6], object.totalBudget);
+  writer.writeLong(offsets[7], object.totalExpense);
 }
 
 BudgetHistory _budgetHistoryDeserialize(
@@ -98,14 +104,15 @@ BudgetHistory _budgetHistoryDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = BudgetHistory();
-  object.createdAt = reader.readDateTime(offsets[0]);
-  object.endDate = reader.readDateTime(offsets[1]);
+  object.bestStreak = reader.readLong(offsets[0]);
+  object.createdAt = reader.readDateTime(offsets[1]);
+  object.endDate = reader.readDateTime(offsets[2]);
   object.id = id;
-  object.isAchieved = reader.readBool(offsets[2]);
-  object.startDate = reader.readDateTime(offsets[3]);
-  object.streak = reader.readLong(offsets[4]);
-  object.totalBudget = reader.readLong(offsets[5]);
-  object.totalExpense = reader.readLong(offsets[6]);
+  object.isAchieved = reader.readBool(offsets[3]);
+  object.startDate = reader.readDateTime(offsets[4]);
+  object.streak = reader.readLong(offsets[5]);
+  object.totalBudget = reader.readLong(offsets[6]);
+  object.totalExpense = reader.readLong(offsets[7]);
   return object;
 }
 
@@ -117,18 +124,20 @@ P _budgetHistoryDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 1:
       return (reader.readDateTime(offset)) as P;
     case 2:
-      return (reader.readBool(offset)) as P;
-    case 3:
       return (reader.readDateTime(offset)) as P;
+    case 3:
+      return (reader.readBool(offset)) as P;
     case 4:
-      return (reader.readLong(offset)) as P;
+      return (reader.readDateTime(offset)) as P;
     case 5:
       return (reader.readLong(offset)) as P;
     case 6:
+      return (reader.readLong(offset)) as P;
+    case 7:
       return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -231,6 +240,62 @@ extension BudgetHistoryQueryWhere
 
 extension BudgetHistoryQueryFilter
     on QueryBuilder<BudgetHistory, BudgetHistory, QFilterCondition> {
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterFilterCondition>
+      bestStreakEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'bestStreak',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterFilterCondition>
+      bestStreakGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'bestStreak',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterFilterCondition>
+      bestStreakLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'bestStreak',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterFilterCondition>
+      bestStreakBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'bestStreak',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<BudgetHistory, BudgetHistory, QAfterFilterCondition>
       createdAtEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
@@ -640,6 +705,19 @@ extension BudgetHistoryQueryLinks
 
 extension BudgetHistoryQuerySortBy
     on QueryBuilder<BudgetHistory, BudgetHistory, QSortBy> {
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy> sortByBestStreak() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bestStreak', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy>
+      sortByBestStreakDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bestStreak', Sort.desc);
+    });
+  }
+
   QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy> sortByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -733,6 +811,19 @@ extension BudgetHistoryQuerySortBy
 
 extension BudgetHistoryQuerySortThenBy
     on QueryBuilder<BudgetHistory, BudgetHistory, QSortThenBy> {
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy> thenByBestStreak() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bestStreak', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy>
+      thenByBestStreakDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'bestStreak', Sort.desc);
+    });
+  }
+
   QueryBuilder<BudgetHistory, BudgetHistory, QAfterSortBy> thenByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -838,6 +929,12 @@ extension BudgetHistoryQuerySortThenBy
 
 extension BudgetHistoryQueryWhereDistinct
     on QueryBuilder<BudgetHistory, BudgetHistory, QDistinct> {
+  QueryBuilder<BudgetHistory, BudgetHistory, QDistinct> distinctByBestStreak() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'bestStreak');
+    });
+  }
+
   QueryBuilder<BudgetHistory, BudgetHistory, QDistinct> distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
@@ -888,6 +985,12 @@ extension BudgetHistoryQueryProperty
   QueryBuilder<BudgetHistory, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<BudgetHistory, int, QQueryOperations> bestStreakProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'bestStreak');
     });
   }
 
