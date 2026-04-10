@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/widgets/future_log_item.dart';
 import 'package:saiyome/widgets/timeline_item.dart';
+import 'package:saiyome/utils/time_provider.dart';
 
 enum TimelineFilterPeriod {
   all,
@@ -46,7 +47,8 @@ class _TimelinePageState extends State<TimelinePage> {
   void initState() {
     super.initState();
     _expenses = List<Expense>.from(widget.expenses);
-    final now = DateTime.now();
+    // final now = DateTime.now();
+    final now = getNow();
     final years = _availableYears;
     _selectedYear = years.contains(now.year)
         ? now.year
@@ -83,7 +85,8 @@ class _TimelinePageState extends State<TimelinePage> {
         .toList()
       ..sort((a, b) => b.compareTo(a));
 
-    final nowYear = DateTime.now().year;
+    // final nowYear = DateTime.now().year;
+    final nowYear = getNow().year;
     if (!years.contains(nowYear)) {
       years.insert(0, nowYear);
     }
@@ -120,7 +123,8 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   bool _matchesPeriod(Expense expense) {
-    final now = DateTime.now();
+    // final now = DateTime.now();
+    final now = getNow();
     final today = _normalize(now);
     final createdAt = _normalize(expense.createdAt);
 

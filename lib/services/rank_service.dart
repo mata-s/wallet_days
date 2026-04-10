@@ -1,4 +1,5 @@
 import 'package:saiyome/models/budget_history.dart';
+import 'package:saiyome/utils/time_provider.dart';
 
 class RankResult {
   final String rankKey;
@@ -40,15 +41,35 @@ class RankService {
     final sorted = [...histories]
       ..sort((a, b) => a.endDate.compareTo(b.endDate));
 
-    final achievedCount = sorted.where((e) => e.isAchieved).length;
+    final now = getNow();
+    final closedHistories = sorted.where((history) {
+      return !now.isBefore(history.endDate);
+    }).toList();
+
+    print('[RankService] histories.length=${histories.length}');
+    for (final h in sorted) {
+      print(
+        '[RankService] history '
+        '${h.startDate} ~ ${h.endDate} '
+        'achieved=${h.isAchieved} '
+        'streak=${h.streak} '
+        'bestStreak=${h.bestStreak} '
+        'closed=${!now.isBefore(h.endDate)}',
+      );
+    }
+
+    final achievedCount = closedHistories.where((e) => e.isAchieved).length;
+    final closedCount = closedHistories.length;
     final totalCount = sorted.length;
     final latest = sorted.last;
     final streak = latest.streak;
     final bestStreak = latest.bestStreak;
-    final successRate = totalCount == 0 ? 0.0 : achievedCount / totalCount;
+    final successRate =
+        closedHistories.isEmpty ? 0.0 : achievedCount / closedHistories.length;
 
     final rankKey = _rankKeyFromStats(
-      totalCount: totalCount,
+      closedCount: closedCount,
+      achievedCount: achievedCount,
       successRate: successRate,
     );
     final rankLabel = _rankLabel(rankKey);
@@ -73,16 +94,17 @@ class RankService {
 
 
   static String _rankKeyFromStats({
-    required int totalCount,
+    required int closedCount,
+    required int achievedCount,
     required double successRate,
   }) {
-    if (totalCount >= 12 && successRate >= 0.90) return 'diamond';
-    if (totalCount >= 9 && successRate >= 0.80) return 'platinum';
-    if (totalCount >= 6 && successRate >= 0.70) return 'gold';
+    if (closedCount >= 12 && successRate >= 0.90) return 'diamond';
+    if (closedCount >= 9 && successRate >= 0.80) return 'platinum';
+    if (closedCount >= 6 && successRate >= 0.70) return 'gold';
 
     // 初期は緩める
-    if (totalCount >= 2 && successRate >= 0.50) return 'silver';
-    if (totalCount >= 1 && successRate > 0) return 'bronze';
+    if (closedCount >= 2 && successRate >= 0.50) return 'silver';
+    if (closedCount >= 1 && achievedCount >= 1) return 'bronze';
 
     return 'starter';
   }

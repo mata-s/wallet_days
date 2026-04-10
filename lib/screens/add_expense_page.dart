@@ -7,6 +7,7 @@ import 'package:saiyome/services/roast_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
+import 'package:saiyome/utils/time_provider.dart';
 
 class AddExpensePage extends StatefulWidget {
   final Expense? initialExpense;
@@ -145,7 +146,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
         debugPrint('[AddExpensePage] immediate notification title=$title body=$body');
     await flutterLocalNotificationsPlugin.show(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: getNow().millisecondsSinceEpoch ~/ 1000,
       title: title,
       body: body,
       notificationDetails: details,
@@ -184,7 +185,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
       ..amount = amount
       ..storeName = store
       ..category = _selectedCategory!
-      ..createdAt = DateTime.now()
+      ..createdAt = getNow()
       ..roastMessage = '昨日の$store、見ましたよ。';
 
     if (widget.initialExpense != null) {

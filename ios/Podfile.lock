@@ -49,15 +49,15 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
-  app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
+  app_links: 585674be3c6661708e6cd794ab4f39fb9d8356f9
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
-  isar_flutter_libs: 9fc2cfb928c539e1b76c481ba5d143d556d94920
-  purchases_flutter: 3570127ba41583a75e553d68a763367007830eff
+  flutter_local_notifications: eda81afddbf18f8589f6ec069ce593c4c6378769
+  isar_flutter_libs: b69f437aeab9c521821c3f376198c4371fa21073
+  purchases_flutter: c1245d908efb42739b626d03905302c003d26811
   PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
   RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
-  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
-  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+  url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
 
 PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
 

@@ -122,8 +122,7 @@ class AccountDataSyncService {
     final setting = BudgetSetting()
       ..totalBudget = (map['total_budget'] as num?)?.toInt() ?? 0
       ..cycleStartDay = (map['cycle_start_day'] as num?)?.toInt() ?? 1
-      ..pendingCycleStartDay =
-          (map['pending_cycle_start_day'] as num?)?.toInt()
+      ..pendingCycleStartDay = null
       ..useCategoryBudget = (map['use_category_budget'] as bool?) ?? false
       ..updatedAt = DateTime.tryParse(map['updated_at']?.toString() ?? '') ??
           DateTime.now();

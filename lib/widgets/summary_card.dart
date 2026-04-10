@@ -48,6 +48,7 @@ class SummaryCard extends StatelessWidget {
     }
 
     return Card(
+      key: ValueKey(cyclePeriod),
       elevation: 1,
       color: Colors.white,
       clipBehavior: Clip.antiAlias,

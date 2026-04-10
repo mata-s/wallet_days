@@ -4,6 +4,7 @@ import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/income_fixed_cost_setting.dart';
 import 'package:saiyome/models/budget_history.dart';
 
+
 class IsarService {
   static late Isar isar;
 
@@ -100,10 +101,25 @@ static Future<Expense?> getExpenseById(int id) async {
   }
 
   static Future<void> saveBudgetSetting(BudgetSetting budgetSetting) async {
+    final existing = await getBudgetSetting();
+
+    // 既存の currentBudgetHistoryLocalId を保持（新しい値が null の場合）
+    if (budgetSetting.currentBudgetHistoryLocalId == null &&
+        existing?.currentBudgetHistoryLocalId != null) {
+      budgetSetting.currentBudgetHistoryLocalId =
+          existing!.currentBudgetHistoryLocalId;
+    }
+
+    print('[IsarService] saveBudgetSetting '
+        'currentBudgetHistoryLocalId=${budgetSetting.currentBudgetHistoryLocalId}');
+
     await isar.writeTxn(() async {
       await isar.budgetSettings.clear();
       await isar.budgetSettings.put(budgetSetting);
     });
+
+    final reloaded = await getBudgetSetting();
+    print('[IsarService] reloaded currentBudgetHistoryLocalId=${reloaded?.currentBudgetHistoryLocalId}');
   }
 
   static Future<BudgetSetting?> getBudgetSetting() async {
@@ -168,6 +184,17 @@ static Future<Expense?> getExpenseById(int id) async {
   static Future<void> saveBudgetHistory(BudgetHistory history) async {
     await isar.writeTxn(() async {
       await isar.budgetHistorys.put(history);
+    });
+  }
+
+  static Future<BudgetHistory?> getBudgetHistoryById(int id) async {
+  return await isar.budgetHistorys.get(id);
+}
+
+  static Future<void> deleteBudgetHistoriesByIds(List<int> ids) async {
+    if (ids.isEmpty) return;
+    await isar.writeTxn(() async {
+      await isar.budgetHistorys.deleteAll(ids);
     });
   }
 

@@ -10,6 +10,7 @@ type ExpenseRow = {
 type BudgetSettingRow = {
   total_budget: number;
   cycle_start_day: number;
+  current_budget_history_local_id: number | null;
   categories_json: Array<{
     name?: string;
     badge?: string;
@@ -18,10 +19,13 @@ type BudgetSettingRow = {
 };
 
 type BudgetHistoryRow = {
+  id: number;
+  local_id: number;
   total_budget: number;
   total_expense: number;
   is_achieved: boolean;
   streak: number;
+  best_streak: number;
   start_date: string;
   end_date: string;
 };
@@ -76,14 +80,10 @@ Deno.serve(async (req) => {
     });
 
     const body = await req.json();
-    const rawPeriodStart = String(body.period_start ?? body.cycleStart ?? "").trim();
-    const rawPeriodEnd = String(body.period_end ?? body.cycleEnd ?? "").trim();
-    const periodStart = toDateKey(rawPeriodStart);
-    const periodEnd = toDateKey(rawPeriodEnd);
+    const localId = Number(body.budget_history_local_id);
     const useAi = Boolean(body.use_ai ?? true);
     console.log("[generate-monthly-report] request", {
-      periodStart,
-      periodEnd,
+      localId,
       useAi,
     });
 
@@ -102,11 +102,8 @@ Deno.serve(async (req) => {
       email: user.email ?? null,
     });
 
-    if (!periodStart || !periodEnd) {
-      return json(
-        { error: "period_start and period_end are required." },
-        400,
-      );
+    if (!localId) {
+      return json({ error: "budget_history_local_id is required." }, 400);
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -133,17 +130,41 @@ Deno.serve(async (req) => {
       .from("monthly_reports")
       .select("*")
       .eq("user_id", userId)
-      .eq("period_start", periodStart)
-      .eq("period_end", periodEnd)
+      .eq("budget_history_local_id", localId)
       .maybeSingle();
 
     if (existingReport) {
       console.log("[generate-monthly-report] existing report found", {
         userId,
-        periodStart,
-        periodEnd,
+        localId,
       });
       return json(existingReport, 200);
+    }
+
+    // periodStart and periodEnd will be set after fetching history
+    let periodStart: string | undefined;
+    let periodEnd: string | undefined;
+
+    // Fetch budget history using local_id
+    const { data: history, error: historyError } = await supabase
+      .from("budget_histories")
+      .select("id, local_id, total_budget, total_expense, is_achieved, streak, best_streak, start_date, end_date")
+      .eq("user_id", userId)
+      .eq("local_id", localId)
+      .maybeSingle();
+
+    if (historyError) throw historyError;
+    periodStart = history?.start_date;
+    periodEnd = history?.end_date;
+    console.log("[generate-monthly-report] target history fetched", {
+      userId,
+      found: !!history,
+      periodStart,
+      periodEnd,
+    });
+
+    if (!history) {
+      return json({ error: "Closed budget history not found for this period." }, 400);
     }
 
     const { data: expenses, error: expensesError } = await supabase
@@ -151,19 +172,19 @@ Deno.serve(async (req) => {
       .select("amount, category, store_name, created_at")
       .eq("user_id", userId)
       .gte("created_at", `${periodStart}T00:00:00`)
-      .lt("created_at", nextDayIso(periodEnd));
+      .lt("created_at", `${periodEnd}T00:00:00`);
 
     if (expensesError) throw expensesError;
     console.log("[generate-monthly-report] expenses fetched", {
       userId,
       count: expenses?.length ?? 0,
       from: `${periodStart}T00:00:00`,
-      toExclusive: nextDayIso(periodEnd),
+      toExclusive: `${periodEnd}T00:00:00`,
     });
 
     const { data: budgetSetting, error: budgetError } = await supabase
       .from("budget_settings")
-      .select("total_budget, cycle_start_day, categories_json")
+      .select("total_budget, cycle_start_day, current_budget_history_local_id, categories_json")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -173,25 +194,16 @@ Deno.serve(async (req) => {
       found: !!budgetSetting,
     });
 
-    const { data: history, error: historyError } = await supabase
-      .from("budget_histories")
-      .select("total_budget, total_expense, is_achieved, streak, start_date, end_date")
-      .eq("user_id", userId)
-      .eq("start_date", periodStart)
-      .eq("end_date", periodEnd)
-      .maybeSingle();
-
-    if (historyError) throw historyError;
-    console.log("[generate-monthly-report] target history fetched", {
-      userId,
-      found: !!history,
-      periodStart,
-      periodEnd,
-    });
+    if (
+      budgetSetting?.current_budget_history_local_id != null &&
+      history.local_id === budgetSetting.current_budget_history_local_id
+    ) {
+      return json({ error: "Current open budget history cannot be reported yet." }, 400);
+    }
 
     const { data: allHistories, error: allHistoriesError } = await supabase
       .from("budget_histories")
-      .select("total_budget, total_expense, is_achieved, streak, start_date, end_date")
+      .select("id, total_budget, total_expense, is_achieved, streak, best_streak, start_date, end_date")
       .eq("user_id", userId)
       .lte("end_date", periodEnd)
       .order("end_date");
@@ -208,14 +220,10 @@ Deno.serve(async (req) => {
     const safeHistory = (history ?? null) as BudgetHistoryRow | null;
     const safeAllHistories = (allHistories ?? []) as BudgetHistoryRow[];
 
-    const totalSpent = safeExpenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
-    const totalBudget =
-      safeHistory?.total_budget ??
-      safeBudgetSetting?.total_budget ??
-      0;
-
+    const totalSpent = safeHistory.total_expense;
+    const totalBudget = safeHistory.total_budget;
     const remainingAmount = totalBudget - totalSpent;
-    const achieved = totalBudget > 0 ? totalSpent <= totalBudget : false;
+    const achieved = safeHistory.is_achieved;
 
     const rank = calculateRank(safeAllHistories);
 
@@ -316,6 +324,7 @@ Deno.serve(async (req) => {
       user_id: userId,
       period_start: periodStart,
       period_end: periodEnd,
+      budget_history_local_id: localId,
       total_budget: totalBudget,
       total_spent: totalSpent,
       remaining_amount: remainingAmount,
@@ -331,6 +340,7 @@ Deno.serve(async (req) => {
       userId,
       periodStart,
       periodEnd,
+      localId,
       totalBudget,
       totalSpent,
       remainingAmount,
@@ -342,7 +352,7 @@ Deno.serve(async (req) => {
     const { data: saved, error: saveError } = await supabase
       .from("monthly_reports")
       .upsert(payload, {
-        onConflict: "user_id,period_start,period_end",
+        onConflict: "user_id,budget_history_local_id",
       })
       .select()
       .single();
@@ -739,15 +749,6 @@ function toDateKey(value: string) {
   return value.includes("T") ? value.slice(0, 10) : value;
 }
 
-function nextDayIso(date: string) {
-  const normalized = date.includes("T") ? date : `${date}T00:00:00`;
-  const d = new Date(normalized);
-  if (Number.isNaN(d.getTime())) {
-    throw new Error(`Invalid date: ${date}`);
-  }
-  d.setDate(d.getDate() + 1);
-  return d.toISOString();
-}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

@@ -120,46 +120,43 @@ class _RankDetailPageState extends State<RankDetailPage>
   }
 
   String _nextRankHint(RankResult rank) {
-    final total = rank.totalCount;
+    final achieved = rank.achievedCount;
     final rate = rank.successRate;
     final percent = (rate * 100).round();
 
     switch (rank.rankKey) {
       case 'starter':
-        if (total < 1) {
-          return 'まずは1ヶ月達成するとブロンズになります。';
-        }
-        return '次は2ヶ月以上・達成率50%以上でシルバーを目指せます。';
+        return 'まずは今の期間を達成するとブロンズになります。';
       case 'bronze':
-        if (total < 2) {
-          return 'あと${2 - total}ヶ月たまると、シルバー条件に近づきます。';
+        if (achieved < 2) {
+          return 'あと${2 - achieved}ヶ月達成すると、シルバー条件に近づきます。';
         }
         if (rate < 0.50) {
           return '達成率は今$percent%です。50%以上でシルバーです。';
         }
         return 'シルバー条件まであと少しです。';
       case 'silver':
-        final needPeriods = total < 6 ? 6 - total : 0;
+        final needPeriods = achieved < 6 ? 6 - achieved : 0;
         if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月ためて、達成率70%以上でゴールドです。';
+          return 'あと$needPeriodsヶ月達成して、達成率70%以上でゴールドです。';
         }
         if (rate < 0.70) {
           return '達成率は今$percent%です。70%以上でゴールドです。';
         }
         return 'ゴールド条件まであと少しです。';
       case 'gold':
-        final needPeriods = total < 9 ? 9 - total : 0;
+        final needPeriods = achieved < 9 ? 9 - achieved : 0;
         if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月ためて、達成率80%以上でプラチナです。';
+          return 'あと$needPeriodsヶ月達成して、達成率80%以上でプラチナです。';
         }
         if (rate < 0.80) {
           return '達成率は今$percent%です。80%以上でプラチナです。';
         }
         return 'プラチナ条件まであと少しです。';
       case 'platinum':
-        final needPeriods = total < 12 ? 12 - total : 0;
+        final needPeriods = achieved < 12 ? 12 - achieved : 0;
         if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月ためて、達成率90%以上でダイヤです。';
+          return 'あと$needPeriodsヶ月達成して、達成率90%以上でダイヤです。';
         }
         if (rate < 0.90) {
           return '達成率は今$percent%です。90%以上でダイヤです。';
@@ -171,26 +168,26 @@ class _RankDetailPageState extends State<RankDetailPage>
   }
 
   double _nextRankProgress(RankResult rank) {
-    final total = rank.totalCount;
+    final achieved = rank.achievedCount.toDouble();
     final rate = rank.successRate;
 
     switch (rank.rankKey) {
       case 'starter':
-        return total >= 1 ? 1 : total / 1;
+        return rank.achievedCount >= 1 ? 1.0 : 0.0;
       case 'bronze':
-        final progressByCount = (total / 2).clamp(0.0, 1.0);
+        final progressByCount = (achieved / 2).clamp(0.0, 1.0);
         final progressByRate = (rate / 0.50).clamp(0.0, 1.0);
         return ((progressByCount + progressByRate) / 2).clamp(0.0, 1.0);
       case 'silver':
-        final progressByCount = (total / 6).clamp(0.0, 1.0);
+        final progressByCount = (achieved / 6).clamp(0.0, 1.0);
         final progressByRate = (rate / 0.70).clamp(0.0, 1.0);
         return ((progressByCount + progressByRate) / 2).clamp(0.0, 1.0);
       case 'gold':
-        final progressByCount = (total / 9).clamp(0.0, 1.0);
+        final progressByCount = (achieved / 9).clamp(0.0, 1.0);
         final progressByRate = (rate / 0.80).clamp(0.0, 1.0);
         return ((progressByCount + progressByRate) / 2).clamp(0.0, 1.0);
       case 'platinum':
-        final progressByCount = (total / 12).clamp(0.0, 1.0);
+        final progressByCount = (achieved / 12).clamp(0.0, 1.0);
         final progressByRate = (rate / 0.90).clamp(0.0, 1.0);
         return ((progressByCount + progressByRate) / 2).clamp(0.0, 1.0);
       default:

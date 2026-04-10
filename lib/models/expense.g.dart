@@ -1338,28 +1338,33 @@ const BudgetSettingSchema = CollectionSchema(
       type: IsarType.objectList,
       target: r'BudgetCategory',
     ),
-    r'cycleStartDay': PropertySchema(
+    r'currentBudgetHistoryLocalId': PropertySchema(
       id: 1,
+      name: r'currentBudgetHistoryLocalId',
+      type: IsarType.long,
+    ),
+    r'cycleStartDay': PropertySchema(
+      id: 2,
       name: r'cycleStartDay',
       type: IsarType.long,
     ),
     r'pendingCycleStartDay': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'pendingCycleStartDay',
       type: IsarType.long,
     ),
     r'totalBudget': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'totalBudget',
       type: IsarType.long,
     ),
     r'updatedAt': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'useCategoryBudget': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'useCategoryBudget',
       type: IsarType.bool,
     )
@@ -1408,11 +1413,12 @@ void _budgetSettingSerialize(
     BudgetCategorySchema.serialize,
     object.categories,
   );
-  writer.writeLong(offsets[1], object.cycleStartDay);
-  writer.writeLong(offsets[2], object.pendingCycleStartDay);
-  writer.writeLong(offsets[3], object.totalBudget);
-  writer.writeDateTime(offsets[4], object.updatedAt);
-  writer.writeBool(offsets[5], object.useCategoryBudget);
+  writer.writeLong(offsets[1], object.currentBudgetHistoryLocalId);
+  writer.writeLong(offsets[2], object.cycleStartDay);
+  writer.writeLong(offsets[3], object.pendingCycleStartDay);
+  writer.writeLong(offsets[4], object.totalBudget);
+  writer.writeDateTime(offsets[5], object.updatedAt);
+  writer.writeBool(offsets[6], object.useCategoryBudget);
 }
 
 BudgetSetting _budgetSettingDeserialize(
@@ -1429,12 +1435,13 @@ BudgetSetting _budgetSettingDeserialize(
         BudgetCategory(),
       ) ??
       [];
-  object.cycleStartDay = reader.readLong(offsets[1]);
+  object.currentBudgetHistoryLocalId = reader.readLongOrNull(offsets[1]);
+  object.cycleStartDay = reader.readLong(offsets[2]);
   object.id = id;
-  object.pendingCycleStartDay = reader.readLongOrNull(offsets[2]);
-  object.totalBudget = reader.readLong(offsets[3]);
-  object.updatedAt = reader.readDateTime(offsets[4]);
-  object.useCategoryBudget = reader.readBool(offsets[5]);
+  object.pendingCycleStartDay = reader.readLongOrNull(offsets[3]);
+  object.totalBudget = reader.readLong(offsets[4]);
+  object.updatedAt = reader.readDateTime(offsets[5]);
+  object.useCategoryBudget = reader.readBool(offsets[6]);
   return object;
 }
 
@@ -1454,14 +1461,16 @@ P _budgetSettingDeserializeProp<P>(
           ) ??
           []) as P;
     case 1:
-      return (reader.readLong(offset)) as P;
-    case 2:
       return (reader.readLongOrNull(offset)) as P;
-    case 3:
+    case 2:
       return (reader.readLong(offset)) as P;
+    case 3:
+      return (reader.readLongOrNull(offset)) as P;
     case 4:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 5:
+      return (reader.readDateTime(offset)) as P;
+    case 6:
       return (reader.readBool(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1650,6 +1659,80 @@ extension BudgetSettingQueryFilter
         upper,
         includeUpper,
       );
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'currentBudgetHistoryLocalId',
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'currentBudgetHistoryLocalId',
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'currentBudgetHistoryLocalId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'currentBudgetHistoryLocalId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'currentBudgetHistoryLocalId',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterFilterCondition>
+      currentBudgetHistoryLocalIdBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'currentBudgetHistoryLocalId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
@@ -1976,6 +2059,20 @@ extension BudgetSettingQueryLinks
 extension BudgetSettingQuerySortBy
     on QueryBuilder<BudgetSetting, BudgetSetting, QSortBy> {
   QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      sortByCurrentBudgetHistoryLocalId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'currentBudgetHistoryLocalId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      sortByCurrentBudgetHistoryLocalIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'currentBudgetHistoryLocalId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
       sortByCycleStartDay() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'cycleStartDay', Sort.asc);
@@ -2046,6 +2143,20 @@ extension BudgetSettingQuerySortBy
 
 extension BudgetSettingQuerySortThenBy
     on QueryBuilder<BudgetSetting, BudgetSetting, QSortThenBy> {
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      thenByCurrentBudgetHistoryLocalId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'currentBudgetHistoryLocalId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
+      thenByCurrentBudgetHistoryLocalIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'currentBudgetHistoryLocalId', Sort.desc);
+    });
+  }
+
   QueryBuilder<BudgetSetting, BudgetSetting, QAfterSortBy>
       thenByCycleStartDay() {
     return QueryBuilder.apply(this, (query) {
@@ -2130,6 +2241,13 @@ extension BudgetSettingQuerySortThenBy
 extension BudgetSettingQueryWhereDistinct
     on QueryBuilder<BudgetSetting, BudgetSetting, QDistinct> {
   QueryBuilder<BudgetSetting, BudgetSetting, QDistinct>
+      distinctByCurrentBudgetHistoryLocalId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'currentBudgetHistoryLocalId');
+    });
+  }
+
+  QueryBuilder<BudgetSetting, BudgetSetting, QDistinct>
       distinctByCycleStartDay() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'cycleStartDay');
@@ -2176,6 +2294,13 @@ extension BudgetSettingQueryProperty
       categoriesProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'categories');
+    });
+  }
+
+  QueryBuilder<BudgetSetting, int?, QQueryOperations>
+      currentBudgetHistoryLocalIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'currentBudgetHistoryLocalId');
     });
   }
 

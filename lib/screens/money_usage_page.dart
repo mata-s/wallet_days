@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
+import 'package:saiyome/utils/time_provider.dart';
 
 class MoneyUsagePage extends StatefulWidget {
   const MoneyUsagePage({super.key});
@@ -26,7 +27,8 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
   List<Expense> _expenses = [];
   List<BudgetHistory> _budgetHistories = [];
   _UsagePeriod _selectedPeriod = _UsagePeriod.thisMonth;
-  int _selectedYear = DateTime.now().year;
+  // int _selectedYear = DateTime.now().year;
+  int _selectedYear = getNow().year;
 
   @override
   void initState() {
@@ -60,10 +62,11 @@ List<BudgetHistory> get _sortedBudgetHistories {
 }
 
 BudgetHistory? get _currentHistory {
-  final now = DateTime.now();
+  // final now = DateTime.now();
+  final now = getNow();
   for (final history in _sortedBudgetHistories) {
     final isInRange =
-        !now.isBefore(history.startDate) && !now.isAfter(history.endDate);
+        !now.isBefore(history.startDate) && now.isBefore(history.endDate);
     if (isInRange) return history;
   }
   return _sortedBudgetHistories.isEmpty ? null : _sortedBudgetHistories.first;
@@ -103,7 +106,7 @@ List<Expense> get _filteredExpenses {
     for (final history in histories) {
       final isInRange =
           !expense.createdAt.isBefore(history.startDate) &&
-          !expense.createdAt.isAfter(history.endDate);
+          expense.createdAt.isBefore(history.endDate);
       if (isInRange) return true;
     }
     return false;

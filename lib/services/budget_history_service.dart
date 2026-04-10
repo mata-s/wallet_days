@@ -4,13 +4,16 @@ import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:saiyome/services/budget_history_sync_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:saiyome/utils/time_provider.dart';
+import 'package:saiyome/services/budget_setting_sync_service.dart';
 
 class BudgetHistoryService {
   static Future<BudgetHistory?> _findPreviousHistory(BudgetHistory current) async {
     final histories = await IsarService.getBudgetHistories();
 
     final previousCandidates = histories.where((history) {
-      return history.endDate.isBefore(current.startDate);
+      return history.endDate.isBefore(current.startDate) ||
+          history.endDate.isAtSameMomentAs(current.startDate);
     }).toList();
 
     if (previousCandidates.isEmpty) return null;
@@ -40,85 +43,106 @@ class BudgetHistoryService {
     await IsarService.saveBudgetHistory(history);
   }
 
-  static Future<void> syncIfNeeded({
-    required int cycleStartDay,
-    required int totalBudget,
-  }) async {
-    print('[BudgetHistoryService] syncIfNeeded start');
-    final safeStartDay = cycleStartDay.clamp(1, 28);
-    final now = DateTime.now();
+static Future<void> syncIfNeeded({
+  required int cycleStartDay,
+  required int totalBudget,
+}) async {
+  print('[BudgetHistoryService] syncIfNeeded start');
 
-    final currentCycleStart = _currentCycleStart(now, safeStartDay);
-    final previousCycleStart = _safeDate(
-      currentCycleStart.year,
-      currentCycleStart.month - 1,
-      safeStartDay,
-    );
-    final previousCycleEnd = currentCycleStart;
-    print('[BudgetHistoryService] period=$previousCycleStart ~ $previousCycleEnd');
-
-    final existing = await IsarService.getBudgetHistoryByPeriod(
-      previousCycleStart,
-      previousCycleEnd,
-    );
-    print('[BudgetHistoryService] existing=${existing != null}');
-
-    final expenses = await IsarService.getExpenses();
-    print('[BudgetHistoryService] allExpenses=${expenses.length}');
-    if (expenses.isEmpty) {
-      print('[BudgetHistoryService] skip: no expenses yet');
-      return;
-    }
-
-    final firstExpenseDate = expenses
-        .map((expense) => expense.createdAt)
-        .reduce((a, b) => a.isBefore(b) ? a : b);
-    print('[BudgetHistoryService] firstExpenseDate=$firstExpenseDate');
-
-    if (!firstExpenseDate.isBefore(previousCycleEnd)) {
-      print('[BudgetHistoryService] skip: user had not started using the app in this period');
-      return;
-    }
-
-    final previousExpenses = expenses.where((expense) {
-      return !expense.createdAt.isBefore(previousCycleStart) &&
-          expense.createdAt.isBefore(previousCycleEnd);
-    }).toList();
-    print('[BudgetHistoryService] previousExpenses=${previousExpenses.length}');
-    // Allow zero-expense periods to still generate a history (totalExpense will be 0)
-
-    final totalExpense = previousExpenses.fold<int>(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
-
-    final history = existing ?? BudgetHistory()
-      ..startDate = previousCycleStart
-      ..endDate = previousCycleEnd
-      ..totalBudget = totalBudget
-      ..totalExpense = totalExpense
-      ..createdAt = existing?.createdAt ?? DateTime.now();
-
-    await _finalizeHistory(history);
-
-    final budgetSetting = await IsarService.getBudgetSetting();
-    if (budgetSetting != null && budgetSetting.pendingCycleStartDay != null) {
-      budgetSetting
-        ..cycleStartDay = budgetSetting.pendingCycleStartDay!
-        ..pendingCycleStartDay = null;
-      await IsarService.saveBudgetSetting(budgetSetting);
-    }
-
-    print('[BudgetHistoryService] save local history');
-
-    final isPremium = await _isPremiumUser();
-    print('[BudgetHistoryService] isPremium=$isPremium');
-    if (isPremium) {
-      print('[BudgetHistoryService] sync start');
-      await BudgetHistorySyncService.syncBudgetHistory(history);
-      print('[BudgetHistoryService] sync done');
-    }
+  final budgetSetting = await IsarService.getBudgetSetting();
+  if (budgetSetting == null) {
+    print('[BudgetHistoryService] skip: no budget setting');
+    return;
   }
+
+  final currentHistoryId = budgetSetting.currentBudgetHistoryLocalId;
+  if (currentHistoryId == null) {
+    print('[BudgetHistoryService] skip: no currentBudgetHistoryLocalId');
+    return;
+  }
+
+  final currentHistory = await IsarService.getBudgetHistoryById(currentHistoryId);
+  if (currentHistory == null) {
+    print('[BudgetHistoryService] skip: current history not found');
+    return;
+  }
+
+  final now = getNow();
+  print(
+    '[BudgetHistoryService] current history '
+    'id=${currentHistory.id} '
+    'start=${currentHistory.startDate} '
+    'end=${currentHistory.endDate}',
+  );
+
+  if (now.isBefore(currentHistory.endDate)) {
+    print('[BudgetHistoryService] skip: current period not finished yet');
+    return;
+  }
+
+  final expenses = await IsarService.getExpenses();
+
+  final currentPeriodExpenses = expenses.where((expense) {
+    return !expense.createdAt.isBefore(currentHistory.startDate) &&
+        expense.createdAt.isBefore(currentHistory.endDate);
+  }).toList();
+
+  final currentTotalExpense = currentPeriodExpenses.fold<int>(
+    0,
+    (sum, expense) => sum + expense.amount,
+  );
+
+  currentHistory
+    ..totalBudget = currentHistory.totalBudget
+    ..totalExpense = currentTotalExpense;
+
+  await _finalizeHistory(currentHistory);
+  await IsarService.saveBudgetHistory(currentHistory);
+  print('[BudgetHistoryService] finalized history id=${currentHistory.id}');
+
+  final nextStart = currentHistory.endDate;
+  final nextEnd = DateTime(nextStart.year, nextStart.month + 1, nextStart.day);
+
+  final nextPeriodExpenses = expenses.where((expense) {
+    return !expense.createdAt.isBefore(nextStart) &&
+        expense.createdAt.isBefore(nextEnd);
+  }).toList();
+
+  final nextTotalExpense = nextPeriodExpenses.fold<int>(
+    0,
+    (sum, expense) => sum + expense.amount,
+  );
+
+  final nextHistory = BudgetHistory()
+    ..startDate = nextStart
+    ..endDate = nextEnd
+    ..totalBudget = budgetSetting.totalBudget
+    ..totalExpense = nextTotalExpense
+    ..isAchieved = nextTotalExpense <= budgetSetting.totalBudget
+    ..streak = currentHistory.streak
+    ..bestStreak = currentHistory.bestStreak
+    ..createdAt = now;
+
+  await IsarService.saveBudgetHistory(nextHistory);
+  print(
+    '[BudgetHistoryService] created next history '
+    'id=${nextHistory.id} start=$nextStart end=$nextEnd',
+  );
+
+  budgetSetting
+    ..currentBudgetHistoryLocalId = nextHistory.id
+    ..updatedAt = now;
+  await IsarService.saveBudgetSetting(budgetSetting);
+
+  final isPremium = await _isPremiumUser();
+  if (isPremium) {
+    print('[BudgetHistoryService] sync start');
+    await BudgetHistorySyncService.syncBudgetHistory(currentHistory);
+    await BudgetHistorySyncService.syncBudgetHistory(nextHistory);
+    await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
+    print('[BudgetHistoryService] sync done');
+  }
+}
 
   static Future<bool> _isPremiumUser() async {
     try {
@@ -137,11 +161,6 @@ class BudgetHistoryService {
     return _currentCycleStart(now, safeStartDay);
   }
 
-  static DateTime _safeDate(int year, int month, int day) {
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final safeDay = day > lastDay ? lastDay : day;
-    return DateTime(year, month, safeDay);
-  }
 
   static DateTime _currentCycleStart(DateTime now, int cycleStartDay) {
     if (now.day >= cycleStartDay) {

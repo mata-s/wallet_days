@@ -36,8 +36,8 @@ class BudgetSettingSyncService {
       'user_id': userId,
       'total_budget': setting.totalBudget,
       'cycle_start_day': setting.cycleStartDay,
-      'pending_cycle_start_day': setting.pendingCycleStartDay,
       'use_category_budget': setting.useCategoryBudget,
+      'current_budget_history_local_id': setting.currentBudgetHistoryLocalId,
       'categories_json': categoriesJson,
       'updated_at': DateTime.now().toIso8601String(),
     };

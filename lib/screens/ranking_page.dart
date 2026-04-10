@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:saiyome/models/expense.dart';
+import 'package:saiyome/utils/time_provider.dart';
 
 class RankingPage extends StatefulWidget {
   final List<Expense> expenses;
@@ -25,10 +26,12 @@ enum _RangeType {
 
 class _RankingPageState extends State<RankingPage> {
   _RangeType _range = _RangeType.current;
-  int _selectedYear = DateTime.now().year;
+  // int _selectedYear = DateTime.now().year;
+  int _selectedYear = getNow().year;
 
   List<Expense> get _filtered {
-    final now = DateTime.now();
+    // final now = DateTime.now();
+    final now = getNow();
 
     switch (_range) {
       case _RangeType.current:
@@ -77,7 +80,8 @@ class _RankingPageState extends State<RankingPage> {
   }
 
   double _compareWithLastMonth() {
-    final now = DateTime.now();
+    // final now = DateTime.now();
+    final now = getNow();
 
     final firstDayThisMonth = DateTime(now.year, now.month, 1);
     final firstDayLastMonth = DateTime(now.year, now.month - 1, 1);

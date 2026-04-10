@@ -9,6 +9,7 @@ import 'package:saiyome/services/budget_setting_sync_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/services/budget_history_sync_service.dart';
+import 'package:saiyome/utils/time_provider.dart';
 
 class ThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -67,8 +68,7 @@ class _BudgetPageState extends State<BudgetPage> {
   bool _useCategoryBudget = true;
 
   int _cycleStartDay = 1;
-  int _activeCycleStartDay = 1;
-  bool _hasExistingBudgetSetting = false;
+  DateTime? _currentOpenPeriodStart;
   int _manualBudgetBuffer = 0;
   int _usableBudgetBase = 0;
 
@@ -94,11 +94,28 @@ Future<void> _loadBudgetSetting() async {
   print('[BudgetPage] load cycleStartDay=${budgetSetting?.cycleStartDay}');
   print('[BudgetPage] load pendingCycleStartDay=${budgetSetting?.pendingCycleStartDay}');
   if (!mounted) return;
+  DateTime? currentOpenPeriodStart;
+  if (budgetSetting?.currentBudgetHistoryLocalId != null) {
+    final currentHistory = await IsarService.getBudgetHistoryById(
+      budgetSetting!.currentBudgetHistoryLocalId!,
+    );
+    currentOpenPeriodStart = currentHistory?.startDate;
+  }
+
+  if (currentOpenPeriodStart == null) {
+    final now = getNow();
+    final histories = await IsarService.getBudgetHistories();
+    for (final history in histories) {
+      if (!now.isBefore(history.startDate) && now.isBefore(history.endDate)) {
+        currentOpenPeriodStart = history.startDate;
+        break;
+      }
+    }
+  }
   if (budgetSetting == null) {
     setState(() {
-      _hasExistingBudgetSetting = false;
-      _activeCycleStartDay = 1;
       _cycleStartDay = 1;
+      _currentOpenPeriodStart = currentOpenPeriodStart;
     });
     return;
   }
@@ -124,10 +141,8 @@ Future<void> _loadBudgetSetting() async {
       ? ''
       : NumberFormat('#,###').format(_manualBudgetBuffer);
 
-  _activeCycleStartDay =
+  _cycleStartDay =
       budgetSetting.cycleStartDay == 0 ? 1 : budgetSetting.cycleStartDay;
-  _cycleStartDay = budgetSetting.pendingCycleStartDay ?? _activeCycleStartDay;
-  _hasExistingBudgetSetting = true;
 
   if (budgetSetting.categories.isEmpty) {
     _categoryControllers.add({
@@ -149,7 +164,9 @@ Future<void> _loadBudgetSetting() async {
     }
   }
 
-  setState(() {});
+  setState(() {
+    _currentOpenPeriodStart = currentOpenPeriodStart;
+  });
 }
 
 Future<void> _loadIncomeFixedCostSetting() async {
@@ -169,20 +186,20 @@ Future<void> _loadIncomeFixedCostSetting() async {
 }
 
 DateTime _currentPeriodStart(DateTime now) {
-  final startDay = _activeCycleStartDay.clamp(1, 28);
+  final startDay = _cycleStartDay.clamp(1, 28);
   if (now.day >= startDay) {
     return DateTime(now.year, now.month, startDay);
   }
   return DateTime(now.year, now.month - 1, startDay);
 }
 
-DateTime _currentPeriodEnd(DateTime periodStart) {
-  return DateTime(
-    periodStart.year,
-    periodStart.month + 1,
-    periodStart.day,
-  ).subtract(const Duration(days: 1));
-}
+// DateTime _currentPeriodEnd(DateTime periodStart) {
+//   return DateTime(
+//     periodStart.year,
+//     periodStart.month + 1,
+//     periodStart.day,
+//   ).subtract(const Duration(days: 1));
+// }
 
   int get _categoryBudgetSum {
     int total = 0;
@@ -304,87 +321,101 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
       });
     }
 
-    final totalBudget = int.tryParse(totalBudgetText) ?? 0;
-    final existingBudgetSetting = await IsarService.getBudgetSetting();
-    final isFirstSetup = existingBudgetSetting == null;
+final totalBudget = int.tryParse(totalBudgetText) ?? 0;
 
-    final appliedCycleStartDay =
-        isFirstSetup ? _cycleStartDay : _activeCycleStartDay;
+final budgetSetting = BudgetSetting()
+  ..totalBudget = totalBudget
+  ..useCategoryBudget = _useCategoryBudget
+  ..cycleStartDay = _cycleStartDay
+  ..pendingCycleStartDay = null
+  ..updatedAt = DateTime.now();
 
-    final pendingCycleStartDay =
-        isFirstSetup || _cycleStartDay == _activeCycleStartDay
-            ? null
-            : _cycleStartDay;
+print('[BudgetPage] save selectedCycleStartDay=$_cycleStartDay');
+print('[BudgetPage] save cycleStartDay=${budgetSetting.cycleStartDay}');
+print('[BudgetPage] save pendingCycleStartDay=${budgetSetting.pendingCycleStartDay}');
 
-    final budgetSetting = BudgetSetting()
-      ..totalBudget = totalBudget
-      ..useCategoryBudget = _useCategoryBudget
-      ..cycleStartDay = appliedCycleStartDay
-      ..pendingCycleStartDay = pendingCycleStartDay
-      ..updatedAt = DateTime.now();
-    print('[BudgetPage] save isFirstSetup=$isFirstSetup');
-    print('[BudgetPage] save selectedCycleStartDay=$_cycleStartDay');
-    print('[BudgetPage] save activeCycleStartDay=$_activeCycleStartDay');
-    print('[BudgetPage] save cycleStartDay=${budgetSetting.cycleStartDay}');
-    print('[BudgetPage] save pendingCycleStartDay=${budgetSetting.pendingCycleStartDay}');
+budgetSetting.categories = validCategories.map((e) {
+  return BudgetCategory()
+    ..name = e['name'] ?? ''
+    ..budget = int.tryParse(e['budget'] ?? '0') ?? 0
+    ..badge = e['badge'] ?? '✨';
+}).toList();
 
-    budgetSetting.categories = validCategories.map((e) {
-      return BudgetCategory()
-        ..name = e['name'] ?? ''
-        ..budget = int.tryParse(e['budget'] ?? '0') ?? 0
-        ..badge = e['badge'] ?? '✨';
-    }).toList();
+    final now = getNow();
 
-    await IsarService.saveBudgetSetting(budgetSetting);
-
-    final shouldApplyNextPeriod =
-        !isFirstSetup && budgetSetting.pendingCycleStartDay != null;
-
-    final now = DateTime.now();
-    final periodStart = isFirstSetup
-        ? (() {
-            final startDay = appliedCycleStartDay.clamp(1, 28);
-            if (now.day >= startDay) {
-              return DateTime(now.year, now.month, startDay);
-            }
-            return DateTime(now.year, now.month - 1, startDay);
-          })()
-        : _currentPeriodStart(now);
-    final periodEnd = _currentPeriodEnd(periodStart);
-
-    final existingHistory = await IsarService.getBudgetHistoryByPeriod(
-      periodStart,
-      periodEnd,
-    );
-
-    if (!shouldApplyNextPeriod) {
-      final history = existingHistory ?? BudgetHistory();
-      history
-        ..startDate = periodStart
-        ..endDate = periodEnd
-        ..totalBudget = totalBudget
-        ..totalExpense = existingHistory?.totalExpense ?? 0
-        ..isAchieved = existingHistory?.isAchieved ?? false
-        ..streak = existingHistory?.streak ?? 0
-        ..createdAt = existingHistory?.createdAt ?? now;
-
-      await IsarService.saveBudgetHistory(history);
+    final savedSetting = await IsarService.getBudgetSetting();
+    BudgetHistory? history;
+    if (savedSetting?.currentBudgetHistoryLocalId != null) {
+      history = await IsarService.getBudgetHistoryById(
+        savedSetting!.currentBudgetHistoryLocalId!,
+      );
     }
+
+    DateTime periodStart;
+    DateTime periodEnd;
+
+    if (history != null) {
+      // 開始日はそのまま維持して、終了日だけ新しい開始日に合わせる
+      periodStart = history.startDate;
+      final nextMonth = DateTime(periodStart.year, periodStart.month + 1);
+      periodEnd = DateTime(nextMonth.year, nextMonth.month, _cycleStartDay);
+    } else {
+      // 初回作成時のみ、今日を含む期間を作る
+      periodStart = _currentPeriodStart(now);
+      periodEnd = DateTime(
+        periodStart.year,
+        periodStart.month + 1,
+        periodStart.day,
+      );
+      history = BudgetHistory()..createdAt = now;
+    }
+
+    final expenses = await IsarService.getExpenses();
+    final recalculatedTotalExpense = expenses
+        .where((expense) {
+          return !expense.createdAt.isBefore(periodStart) &&
+              expense.createdAt.isBefore(periodEnd);
+        })
+        .fold<int>(0, (sum, expense) => sum + expense.amount);
+
+    history
+      ..startDate = periodStart
+      ..endDate = periodEnd
+      ..totalBudget = totalBudget
+      ..totalExpense = recalculatedTotalExpense
+      ..isAchieved = recalculatedTotalExpense <= totalBudget
+      ..streak = history.streak
+      ..bestStreak = history.bestStreak
+      ..createdAt = history.createdAt;
+
+    await IsarService.saveBudgetHistory(history);
+
+    final refreshedSetting = (savedSetting ?? budgetSetting)
+      ..totalBudget = budgetSetting.totalBudget
+      ..useCategoryBudget = budgetSetting.useCategoryBudget
+      ..cycleStartDay = budgetSetting.cycleStartDay
+      ..pendingCycleStartDay = null
+      ..currentBudgetHistoryLocalId = history.id
+      ..updatedAt = budgetSetting.updatedAt
+      ..categories = budgetSetting.categories;
+
+    await IsarService.saveBudgetSetting(refreshedSetting);
+
+    print(
+      '[BudgetPage] saved history id=${history.id} '
+      'start=${history.startDate} '
+      'end=${history.endDate} '
+      'totalBudget=${history.totalBudget} '
+      'totalExpense=${history.totalExpense} '
+      'currentBudgetHistoryLocalId=${refreshedSetting.currentBudgetHistoryLocalId}',
+    );
 
     final isPremium = await _isPremiumUser();
     if (isPremium) {
-      await BudgetSettingSyncService.syncBudgetSetting(budgetSetting);
-
-      if (!shouldApplyNextPeriod) {
-        final latestHistory = await IsarService.getBudgetHistoryByPeriod(
-          periodStart,
-          periodEnd,
-        );
-        if (latestHistory != null) {
-          await BudgetHistorySyncService.syncBudgetHistory(latestHistory);
-        }
-      }
+      await BudgetSettingSyncService.syncBudgetSetting(refreshedSetting);
+      await BudgetHistorySyncService.syncBudgetHistory(history);
     }
+
     if (!mounted) return;
     Navigator.pop(context, true);
   }
@@ -464,20 +495,38 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
     );
   }
 
-  DateTime _previewPeriodStart(DateTime now, int cycleStartDay) {
-    final startDay = cycleStartDay.clamp(1, 28);
-    if (now.day >= startDay) {
-      return DateTime(now.year, now.month, startDay);
+  ({DateTime start, DateTime end}) _previewPeriodRange(
+    DateTime now,
+    int cycleStartDay,
+  ) {
+    final safeStartDay = cycleStartDay.clamp(1, 28);
+
+    if (_currentOpenPeriodStart != null) {
+      final start = _currentOpenPeriodStart!;
+      final nextMonth = DateTime(start.year, start.month + 1);
+      final endExclusive = DateTime(nextMonth.year, nextMonth.month, safeStartDay);
+      return (
+        start: start,
+        end: endExclusive.subtract(const Duration(days: 1)),
+      );
     }
-    return DateTime(now.year, now.month - 1, startDay);
+
+    final start = now.day >= safeStartDay
+        ? DateTime(now.year, now.month, safeStartDay)
+        : DateTime(now.year, now.month - 1, safeStartDay);
+    final endExclusive = DateTime(start.year, start.month + 1, start.day);
+
+    return (
+      start: start,
+      end: endExclusive.subtract(const Duration(days: 1)),
+    );
   }
 
   Widget _buildStartDayCard(ThemeData theme) {
-    final now = DateTime.now();
-    final previewStart = _previewPeriodStart(now, _cycleStartDay);
-    final previewEnd = _currentPeriodEnd(previewStart);
+    final now = getNow();
+    final previewRange = _previewPeriodRange(now, _cycleStartDay);
     final previewText =
-        '${previewStart.month}/${previewStart.day}〜${previewEnd.month}/${previewEnd.day}';
+        '${previewRange.start.month}/${previewRange.start.day}〜${previewRange.end.month}/${previewRange.end.day}';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -495,7 +544,7 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
           ),
           const SizedBox(height: 4),
           Text(
-            'ここから1ヶ月で集計',
+            '現在の集計期間をこの開始日に合わせて更新します',
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.black54,
             ),
@@ -509,47 +558,6 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
             ),
           ),
           const SizedBox(height: 8),
-          if (_hasExistingBudgetSetting && _cycleStartDay != _activeCycleStartDay) ...[
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF6EC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFF1D8B5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '変更は保存されています',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8A5A22),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '現在: 毎月 $_activeCycleStartDay 日から',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8A5A22),
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
-                  ),
-                  Text(
-                    '次回: 毎月 $_cycleStartDay 日から',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8A5A22),
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           InkWell(
             onTap: _showCycleStartDayPicker,
             borderRadius: BorderRadius.circular(12),
@@ -567,10 +575,7 @@ DateTime _currentPeriodEnd(DateTime periodStart) {
                 children: [
                   Expanded(
                     child: Text(
-                      _hasExistingBudgetSetting &&
-                              _cycleStartDay != _activeCycleStartDay
-                          ? '毎月 $_cycleStartDay 日から（次回反映予定）'
-                          : '毎月 $_cycleStartDay 日から',
+                      '毎月 $_cycleStartDay 日から',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
