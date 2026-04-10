@@ -154,8 +154,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (historyError) throw historyError;
-    periodStart = history?.start_date;
-    periodEnd = history?.end_date;
+    periodStart = history?.start_date ? toDateKey(history.start_date) : undefined;
+    periodEnd = history?.end_date ? toDateKey(history.end_date) : undefined;
     console.log("[generate-monthly-report] target history fetched", {
       userId,
       found: !!history,
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
 
     const { data: allHistories, error: allHistoriesError } = await supabase
       .from("budget_histories")
-      .select("id, total_budget, total_expense, is_achieved, streak, best_streak, start_date, end_date")
+      .select("id, local_id, total_budget, total_expense, is_achieved, streak, best_streak, start_date, end_date")
       .eq("user_id", userId)
       .lte("end_date", periodEnd)
       .order("end_date");
