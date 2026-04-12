@@ -116,8 +116,29 @@ List<Expense> get _filteredExpenses {
   int get _totalAmount =>
       _filteredExpenses.fold<int>(0, (sum, e) => sum + e.amount);
 
-  int get _allTimeTotal =>
-      _expenses.fold<int>(0, (sum, e) => sum + e.amount.toInt());
+int get _summaryBottomTotal {
+  switch (_selectedPeriod) {
+    case _UsagePeriod.thisMonth:
+    case _UsagePeriod.lastMonth:
+      return 0;
+    case _UsagePeriod.byYear:
+      return _totalAmount;
+    case _UsagePeriod.all:
+      return _expenses.fold<int>(0, (sum, e) => sum + e.amount.toInt());
+  }
+}
+
+String? get _summaryBottomLabel {
+  switch (_selectedPeriod) {
+    case _UsagePeriod.thisMonth:
+    case _UsagePeriod.lastMonth:
+      return null;
+    case _UsagePeriod.byYear:
+      return '$_selectedYear年合計';
+    case _UsagePeriod.all:
+      return '全期間合計';
+  }
+}
 
 
 
@@ -348,7 +369,8 @@ List<int> get _availableYears {
                       _SummaryCard(
                         title: _selectedPeriodLabel,
                         totalAmount: _totalAmount,
-                        allTimeTotal: _allTimeTotal,
+                        bottomTotal: _summaryBottomTotal,
+                        bottomLabel: _summaryBottomLabel,
                         previousPeriodTotal: _previousPeriodTotal,
                         comparisonLabel: _comparisonLabel,
                         expenseCount: _filteredExpenses.length,
@@ -394,7 +416,8 @@ List<int> get _availableYears {
 class _SummaryCard extends StatelessWidget {
   final String title;
   final int totalAmount;
-  final int allTimeTotal;
+  final int bottomTotal;
+  final String? bottomLabel;
   final int previousPeriodTotal;
   final String comparisonLabel;
   final int expenseCount;
@@ -405,7 +428,8 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.title,
     required this.totalAmount,
-    required this.allTimeTotal,
+    required this.bottomTotal,
+    required this.bottomLabel,
     required this.previousPeriodTotal,
     required this.comparisonLabel,
     required this.expenseCount,
@@ -482,13 +506,15 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 4),
-          Text(
-            '全期間合計: ¥${yenFormatter.format(allTimeTotal)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.black54,
-            ),
-          ),
+if (bottomLabel != null) ...[
+  const SizedBox(height: 4),
+  Text(
+    '$bottomLabel: ¥${yenFormatter.format(bottomTotal)}',
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: Colors.black54,
+    ),
+  ),
+],
         ],
       ),
     );

@@ -30,6 +30,49 @@ Future<void> main() async {
   await flutterLocalNotificationsPlugin.initialize(
     settings: initializationSettings,
   );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>()
+      ?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+  const androidChannel = AndroidNotificationChannel(
+    'saiyome_channel',
+    '財布の通知',
+    description: '支出記録後の通知',
+    importance: Importance.max,
+  );
+
+  final androidPlugin = flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
+  await androidPlugin?.createNotificationChannel(androidChannel);
+
+  await androidPlugin?.requestNotificationsPermission();
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>()
+      ?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin>()
+      ?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
   await initSupabase();
   await IsarService.init();
   runApp(const SaiyomeApp());

@@ -4,6 +4,7 @@ import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/widgets/future_log_item.dart';
 import 'package:saiyome/widgets/timeline_item.dart';
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
 
 enum TimelineFilterPeriod {
   all,
@@ -577,6 +578,7 @@ children: _filteredExpenses.expand((expense) => [
         : (_) async {
             final deleted = await widget.onDeleteExpense!(expense);
             if (deleted == true && mounted) {
+              await flutterLocalNotificationsPlugin.cancel(id: expense.id);
               setState(() {
                 _expenses.removeWhere((item) => item.id == expense.id);
               });
@@ -610,6 +612,7 @@ children: _filteredExpenses.expand((expense) => [
               final deleted = await widget.onDeleteExpense!(expense);
               if (deleted != true || !mounted) return;
 
+              await flutterLocalNotificationsPlugin.cancel(id: expense.id);
               setState(() {
                 _expenses.removeWhere((item) => item.id == expense.id);
               });

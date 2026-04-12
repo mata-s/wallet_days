@@ -8,6 +8,8 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:timezone/timezone.dart' as tz;
+// import 'package:saiyome/screens/receipt_scan_page.dart';
 
 class AddExpensePage extends StatefulWidget {
   final Expense? initialExpense;
@@ -29,6 +31,9 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
   String? _selectedCategory;
   List<BudgetCategory> _categories = [];
+  List<String> _frequentStores = [];
+  
+  Map<String, List<int>> _storeAmounts = {};
 
   @override
   void initState() {
@@ -58,6 +63,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
     }
 
     _loadCategories();
+    _loadFrequentStores();
   }
 
   Future<void> _loadCategories() async {
@@ -83,6 +89,55 @@ class _AddExpensePageState extends State<AddExpensePage> {
       }
     });
   }
+
+Future<void> _loadFrequentStores() async {
+  final expenses = await IsarService.getExpenses();
+  if (!mounted) return;
+
+  final Map<String, int> countMap = {};
+  final Map<String, Map<int, int>> amountCountMap = {};
+
+  for (final expense in expenses) {
+    final store = expense.storeName.trim();
+    if (store.isEmpty) continue;
+
+    countMap[store] = (countMap[store] ?? 0) + 1;
+
+    amountCountMap[store] ??= {};
+    amountCountMap[store]![expense.amount] =
+        (amountCountMap[store]![expense.amount] ?? 0) + 1;
+  }
+
+  final sortedStores = countMap.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      if (byCount != 0) return byCount;
+      return a.key.compareTo(b.key);
+    });
+
+  final Map<String, List<int>> storeAmounts = {};
+  for (final entry in amountCountMap.entries) {
+    final sortedAmounts = entry.value.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) return byCount;
+        return a.key.compareTo(b.key);
+      });
+
+    storeAmounts[entry.key] = sortedAmounts
+        .map((amountEntry) => amountEntry.key)
+        .take(4)
+        .toList();
+  }
+
+  setState(() {
+    _frequentStores = sortedStores
+        .map((entry) => entry.key)
+        .take(8)
+        .toList();
+    _storeAmounts = storeAmounts;
+  });
+}
 
   Future<bool> _isPremiumUser() async {
     try {
@@ -136,6 +191,8 @@ class _AddExpensePageState extends State<AddExpensePage> {
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      presentBanner: true,
+      presentList: true,
     );
 
     const details = NotificationDetails(
@@ -144,15 +201,78 @@ class _AddExpensePageState extends State<AddExpensePage> {
       macOS: darwinDetails,
     );
 
-        debugPrint('[AddExpensePage] immediate notification title=$title body=$body');
-    await flutterLocalNotificationsPlugin.show(
-      id: getNow().millisecondsSinceEpoch ~/ 1000,
-      title: title,
-      body: body,
-      notificationDetails: details,
-    );
-  }
+    final androidPlugin = flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
+    if (androidPlugin != null) {
+      var permissionGranted = await androidPlugin.areNotificationsEnabled();
+
+      if (permissionGranted == false) {
+        await androidPlugin.requestNotificationsPermission();
+        permissionGranted = await androidPlugin.areNotificationsEnabled();
+      }
+
+      debugPrint('[AddExpensePage] notification permissionGranted=$permissionGranted');
+
+      if (permissionGranted == false) {
+        debugPrint('[AddExpensePage] notification skipped because permission is denied');
+        return;
+      }
+    } else {
+      debugPrint('[AddExpensePage] iOS/macOS: skip Android permission check');
+    }
+
+   const notificationId = 900001;
+
+    debugPrint('[AddExpensePage] scheduled notification for 15 minutes later');
+    debugPrint('[AddExpensePage] title=$title');
+    debugPrint('[AddExpensePage] body=$body');
+debugPrint('[AddExpensePage] notificationId=$notificationId');
+
+await flutterLocalNotificationsPlugin.cancel(id: notificationId);
+
+await flutterLocalNotificationsPlugin.zonedSchedule(
+  id: notificationId,
+  title: title,
+  body: body,
+  scheduledDate: tz.TZDateTime.now(tz.local).add(
+    const Duration(minutes: 15),
+  ),
+  notificationDetails: details,
+  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+);
+  }
+  // Future<void> _openReceiptScanPage() async {
+  //   final isPremium = await _isPremiumUser();
+
+  //   if (!isPremium) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(content: Text('プレミアム機能です')),
+  //     );
+  //     return;
+  //   }
+
+  //   final result = await Navigator.push(
+  //     context,
+  //     MaterialPageRoute(
+  //       builder: (_) => const ReceiptScanPage(),
+  //     ),
+  //   );
+
+  //   if (result == null) return;
+
+  //   final store = result['store'];
+  //   final amount = result['amount'];
+
+  //   if (store != null) {
+  //     _storeController.text = store;
+  //   }
+
+  //   if (amount != null) {
+  //     _amountController.text = amount.toString();
+  //   }
+  // }
 
   Future<void> _saveExpense() async {
     final amountText = _amountController.text.trim();
@@ -200,6 +320,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
     if (isPremium) {
       await ExpenseSyncService.syncExpense(expense);
     }
+    debugPrint('[AddExpensePage] calling notification after save');
     await _showSavedExpenseNotification(expense);
 
     if (!mounted) return;
@@ -233,7 +354,52 @@ class _AddExpensePageState extends State<AddExpensePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('金額', style: theme.textTheme.titleMedium),
+              // 一旦非表示（レシート機能）
+              // TextButton.icon(
+              //   onPressed: _openReceiptScanPage,
+              //   icon: const Icon(Icons.receipt_long),
+              //   label: const Text('レシートを読み込む（プレミアム）'),
+              // ),
+              // const SizedBox(height: 12),
+              Text('店名・サービス名', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _storeController,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  hintText: '例: スタバ',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_frequentStores.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'よく使うお店',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _frequentStores.map((store) {
+                    return ActionChip(
+                      label: Text(store),
+                      onPressed: () {
+                        setState(() {
+                          _storeController.text = store;
+                          _storeController.selection = TextSelection.collapsed(
+                            offset: _storeController.text.length,
+                          );
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                 Text('金額', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               TextField(
                 controller: _amountController,
@@ -244,16 +410,37 @@ class _AddExpensePageState extends State<AddExpensePage> {
                   suffixText: '円',
                 ),
               ),
-              const SizedBox(height: 20),
-              Text('店名・サービス名', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _storeController,
-                decoration: const InputDecoration(
-                  hintText: '例: スタバ',
-                  border: OutlineInputBorder(),
-                ),
-              ),
+              if (_storeController.text.trim().isNotEmpty &&
+    (_storeAmounts[_storeController.text.trim()] ?? []).isNotEmpty) ...[
+  const SizedBox(height: 10),
+  Text(
+    'よく使う金額',
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: Colors.black54,
+      fontWeight: FontWeight.w600,
+    ),
+  ),
+  const SizedBox(height: 8),
+  Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: (_storeAmounts[_storeController.text.trim()] ?? [])
+        .map((amount) {
+      return ActionChip(
+        label: Text('${_yenFormatter.format(amount)}円'),
+        onPressed: () {
+          setState(() {
+            _amountController.text = amount.toString();
+            _amountController.selection = TextSelection.collapsed(
+              offset: _amountController.text.length,
+            );
+          });
+        },
+      );
+    }).toList(),
+  ),
+],
+              ],
               const SizedBox(height: 20),
               Text('カテゴリ', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),

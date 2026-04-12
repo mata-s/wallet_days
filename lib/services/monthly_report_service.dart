@@ -184,7 +184,7 @@ class MonthlyReportService {
     return MonthlyReportResult(report: createdReport, created: true);
   }
 
-  static Future<void> autoGenerateIfNeeded({
+  static Future<bool> autoGenerateIfNeeded({
     required DateTime now,
     required DateTime currentCycleStart,
     required int cycleStartDay,
@@ -196,13 +196,13 @@ class MonthlyReportService {
 
     if (currentId == null) {
       print('[MonthlyReportService] skip: no currentBudgetHistoryLocalId');
-      return;
+      return false;
     }
 
     final currentHistory = await IsarService.getBudgetHistoryById(currentId);
     if (currentHistory == null) {
       print('[MonthlyReportService] skip: current history not found');
-      return;
+      return false;
     }
 
     final histories = await IsarService.getBudgetHistories();
@@ -215,7 +215,7 @@ class MonthlyReportService {
 
     if (currentIndex <= 0) {
       print('[MonthlyReportService] skip: no previous history');
-      return;
+      return false;
     }
 
     final previousHistory = sorted[currentIndex - 1];
@@ -223,13 +223,13 @@ class MonthlyReportService {
     // 前月レポートは、current history が始まっている時点で生成対象になる
     if (effectiveNow.isBefore(currentHistory.startDate)) {
       print('[MonthlyReportService] skip: current period has not started yet');
-      return;
+      return false;
     }
 
     final existing = await getReportForHistoryLocalId(localId: previousHistory.id);
     if (existing != null) {
       print('[MonthlyReportService] skip: report already exists for localId=${previousHistory.id}');
-      return;
+      return false;
     }
 
     print('[MonthlyReportService] generate report for previous history '
@@ -237,6 +237,7 @@ class MonthlyReportService {
         'start=${previousHistory.startDate} end=${previousHistory.endDate}');
 
     await getOrCreateReportByLocalId(localId: previousHistory.id);
+    return true;
   }
 
   static String _dateKey(DateTime date) {

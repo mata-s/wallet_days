@@ -28,6 +28,7 @@ import 'package:saiyome/services/expense_sync_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -309,47 +310,6 @@ Future<void> _syncBudgetHistoryIfNeeded() async {
     }
   }
 
-  Future<void> _generateMonthlyReportForTest() async {
-    if (mounted) {
-      setState(() {
-        _isGeneratingMonthlyReport = true;
-        _monthlyReportStatusMessage = 'レポート作成中です...';
-      });
-    }
-
-    try {
-      final response = await Supabase.instance.client.functions.invoke(
-        'generate-monthly-report',
-        body: {
-          'cycleStart': _currentCycleStart.toIso8601String(),
-          'cycleEnd': _currentCycleEnd.toIso8601String(),
-        },
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _isGeneratingMonthlyReport = false;
-        _monthlyReportStatusMessage = 'レポートを作成しました';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('月レポート生成を実行しました: ${response.data}'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isGeneratingMonthlyReport = false;
-        _monthlyReportStatusMessage = 'レポート作成に失敗しました';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('月レポート生成に失敗しました: $e'),
-        ),
-      );
-    }
-  }
-
   IconData _iconForCategory(String category) {
     switch (category) {
       case 'カフェ':
@@ -500,6 +460,200 @@ Widget _rankBadge(String? rankKey, {double size = 52}) {
       size: size * 0.42,
     ),
   );
+
+}
+
+// Receipt overlay helpers
+List<_ReceiptDecorationItem> _buildReceiptDecorations({
+  required double usageRate,
+}) {
+  return const [];
+}
+
+String? _receiptOverlayLabel(double usageRate) {
+  return null;
+}
+
+Widget _buildSummaryReceiptOverlay({
+  required ThemeData theme,
+  required double usageRate,
+}) {
+  final receipts = _buildReceiptDecorations(usageRate: usageRate);
+  if (receipts.isEmpty) {
+    return const SizedBox.shrink();
+  }
+
+  final overlayLabel = _receiptOverlayLabel(usageRate);
+
+  return IgnorePointer(
+    child: SizedBox(
+      height: usageRate >= 1.0 ? 230 : 190,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (final receipt in receipts)
+            Positioned(
+              left: receipt.left,
+              right: receipt.right,
+              top: receipt.top - 92,
+              child: Transform.rotate(
+                angle: receipt.rotation,
+                child: Opacity(
+                  opacity: receipt.opacity,
+                  child: _ReceiptDecorationCard(width: receipt.width),
+                ),
+              ),
+            ),
+          if (overlayLabel != null)
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: usageRate >= 1.0 ? 0 : 8,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.96),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFE8E8E8)),
+                  ),
+                  child: Text(
+                    overlayLabel,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+List<_ReceiptDecorationItem> _buildFullScreenReceiptDecorations({
+  required double usageRate,
+}) {
+  if (usageRate < 0.75) return const [];
+
+  if (usageRate < 0.9) {
+    return const [
+      _ReceiptDecorationItem(left: 18, top: 170, width: 108, rotation: -0.16, opacity: 0.14),
+      _ReceiptDecorationItem(right: 22, top: 206, width: 102, rotation: 0.14, opacity: 0.13),
+      _ReceiptDecorationItem(left: 96, top: 252, width: 96, rotation: -0.08, opacity: 0.12),
+      _ReceiptDecorationItem(right: 102, top: 332, width: 94, rotation: 0.08, opacity: 0.12),
+      _ReceiptDecorationItem(left: 26, top: 408, width: 98, rotation: -0.1, opacity: 0.13),
+      _ReceiptDecorationItem(right: 30, top: 494, width: 92, rotation: 0.08, opacity: 0.12),
+    ];
+  }
+
+  if (usageRate < 1.0) {
+    return const [
+      _ReceiptDecorationItem(left: 14, top: 144, width: 112, rotation: -0.18, opacity: 0.18),
+      _ReceiptDecorationItem(right: 18, top: 184, width: 106, rotation: 0.16, opacity: 0.17),
+      _ReceiptDecorationItem(left: 88, top: 228, width: 102, rotation: -0.1, opacity: 0.16),
+      _ReceiptDecorationItem(right: 88, top: 292, width: 100, rotation: 0.12, opacity: 0.16),
+      _ReceiptDecorationItem(left: 20, top: 358, width: 104, rotation: -0.12, opacity: 0.17),
+      _ReceiptDecorationItem(right: 22, top: 424, width: 96, rotation: 0.1, opacity: 0.16),
+      _ReceiptDecorationItem(left: 106, top: 500, width: 94, rotation: -0.08, opacity: 0.15),
+      _ReceiptDecorationItem(right: 34, top: 568, width: 92, rotation: 0.08, opacity: 0.14),
+    ];
+  }
+
+  if (usageRate < 1.1) {
+    return const [
+      _ReceiptDecorationItem(left: 10, top: 120, width: 114, rotation: -0.2, opacity: 0.21),
+      _ReceiptDecorationItem(right: 12, top: 154, width: 110, rotation: 0.18, opacity: 0.2),
+      _ReceiptDecorationItem(left: 84, top: 200, width: 104, rotation: -0.12, opacity: 0.19),
+      _ReceiptDecorationItem(right: 86, top: 258, width: 100, rotation: 0.14, opacity: 0.18),
+      _ReceiptDecorationItem(left: 18, top: 318, width: 104, rotation: -0.14, opacity: 0.19),
+      _ReceiptDecorationItem(right: 18, top: 382, width: 98, rotation: 0.12, opacity: 0.18),
+      _ReceiptDecorationItem(left: 102, top: 454, width: 96, rotation: -0.08, opacity: 0.17),
+      _ReceiptDecorationItem(right: 28, top: 522, width: 94, rotation: 0.08, opacity: 0.17),
+      _ReceiptDecorationItem(left: 116, top: 590, width: 90, rotation: -0.06, opacity: 0.16),
+    ];
+  }
+
+  if (usageRate < 1.2) {
+    return const [
+      _ReceiptDecorationItem(left: 8, top: 108, width: 116, rotation: -0.22, opacity: 0.24),
+      _ReceiptDecorationItem(right: 10, top: 142, width: 112, rotation: 0.2, opacity: 0.23),
+      _ReceiptDecorationItem(left: 76, top: 188, width: 108, rotation: -0.12, opacity: 0.22),
+      _ReceiptDecorationItem(right: 76, top: 242, width: 104, rotation: 0.14, opacity: 0.21),
+      _ReceiptDecorationItem(left: 14, top: 304, width: 106, rotation: -0.14, opacity: 0.22),
+      _ReceiptDecorationItem(right: 16, top: 364, width: 100, rotation: 0.12, opacity: 0.2),
+      _ReceiptDecorationItem(left: 94, top: 430, width: 100, rotation: -0.1, opacity: 0.19),
+      _ReceiptDecorationItem(right: 24, top: 496, width: 96, rotation: 0.1, opacity: 0.19),
+      _ReceiptDecorationItem(left: 112, top: 560, width: 94, rotation: -0.08, opacity: 0.18),
+      _ReceiptDecorationItem(right: 34, top: 622, width: 90, rotation: 0.08, opacity: 0.18),
+      _ReceiptDecorationItem(left: 126, top: 686, width: 88, rotation: -0.06, opacity: 0.17),
+    ];
+  }
+
+  return const [
+    _ReceiptDecorationItem(left: 6, top: 94, width: 118, rotation: -0.24, opacity: 0.27),
+    _ReceiptDecorationItem(right: 8, top: 126, width: 114, rotation: 0.22, opacity: 0.26),
+    _ReceiptDecorationItem(left: 72, top: 170, width: 110, rotation: -0.12, opacity: 0.24),
+    _ReceiptDecorationItem(right: 70, top: 222, width: 106, rotation: 0.16, opacity: 0.23),
+    _ReceiptDecorationItem(left: 10, top: 286, width: 108, rotation: -0.14, opacity: 0.23),
+    _ReceiptDecorationItem(right: 12, top: 344, width: 104, rotation: 0.12, opacity: 0.22),
+    _ReceiptDecorationItem(left: 86, top: 410, width: 102, rotation: -0.1, opacity: 0.21),
+    _ReceiptDecorationItem(right: 20, top: 474, width: 100, rotation: 0.1, opacity: 0.2),
+    _ReceiptDecorationItem(left: 108, top: 538, width: 98, rotation: -0.08, opacity: 0.2),
+    _ReceiptDecorationItem(right: 28, top: 602, width: 96, rotation: 0.08, opacity: 0.19),
+    _ReceiptDecorationItem(left: 120, top: 666, width: 92, rotation: -0.06, opacity: 0.18),
+    _ReceiptDecorationItem(right: 40, top: 726, width: 90, rotation: 0.08, opacity: 0.18),
+    _ReceiptDecorationItem(left: 92, top: 786, width: 88, rotation: -0.06, opacity: 0.17),
+  ];
+}
+
+Widget _buildFullScreenReceiptOverlay({
+  required double usageRate,
+}) {
+  final receipts = _buildFullScreenReceiptDecorations(usageRate: usageRate);
+  if (receipts.isEmpty) {
+    return const SizedBox.shrink();
+  }
+
+  return IgnorePointer(
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.white.withOpacity(0.02),
+                  Colors.white.withOpacity(usageRate >= 1.2 ? 0.08 : 0.05),
+                ],
+                stops: const [0.0, 0.38, 1.0],
+              ),
+            ),
+          ),
+        ),
+        for (final receipt in receipts)
+          Positioned(
+            left: receipt.left,
+            right: receipt.right,
+            top: receipt.top,
+            child: Transform.rotate(
+              angle: receipt.rotation,
+              child: Opacity(
+                opacity: receipt.opacity,
+                child: _ReceiptDecorationCard(width: receipt.width),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 Future<void> _shiftDebugNow(Duration delta) async {
@@ -632,224 +786,320 @@ Future<void> _openDebugTimeMenu() async {
     final dangerCategories = _dangerCategoriesCache;
     final roastCards = _roastCardsCache;
     final categorySummaries = _categorySummariesCache;
+    final budgetUsageRate = _totalBudget <= 0 ? 0.0 : usedAmount / _totalBudget;
+    final hasReceiptOverlay = budgetUsageRate >= 0.75;
+   final hasFullScreenReceiptOverlay = budgetUsageRate >= 0.75;
 
     return Scaffold(
       drawer: Drawer(
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(24),
+            bottomRight: Radius.circular(24),
+          ),
+        ),
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              if (kDebugMode) ...[
-  Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: const Color(0xFFF8F9FC),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFFE6E9F2)),
-    ),
-    child: Text(
-      'デバッグ時刻: ${DateFormat('yyyy/MM/dd').format(getNow())}',
-      style: theme.textTheme.bodySmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: Colors.black87,
-      ),
-    ),
-  ),
-  const SizedBox(height: 12),
-],
-              const SizedBox(height: 12),
-              ListTile(
-                leading: Icon(
-                  isLoggedIn ? Icons.verified_user_outlined : Icons.person_outline,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 18),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8F9FC),
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFFE9ECF3)),
+                  ),
                 ),
-                title: Text(isLoggedIn ? 'ログイン中' : '未ログイン'),
-                subtitle: Text(
-                  isLoggedIn
-                      ? (currentUser?.email?.isNotEmpty == true
-                          ? currentUser!.email!
-                          : 'Apple / Google アカウントで利用中')
-                      : 'アカウント登録・ログインで引き継ぎできます',
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const BackupRestorePage(),
-                    ),
-                  );
-                  if (result == true) {
-                    await _loadInitialData();
-                  }
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.workspace_premium_rounded),
-                title: Text(_isPremium ? 'プレミアム利用中' : 'プレミアム'),
-                subtitle: Text(
-                  _isPremium
-                      ? 'すべてのプレミアム機能が使えます'
-                      : 'レポート・バッヂ・バックアップ・レシート機能を解放',
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PremiumPage(),
-                    ),
-                  );
-                  if (result == true) {
-                    await _loadPremiumStatus();
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.credit_card_outlined),
-                title: const Text('クレカ連携…？'),
-                subtitle: const Text('自動連携について'),
-                onTap: () async {
-                  Navigator.pop(context);
-
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (dialogContext) {
-                      return AlertDialog(
-                        title: const Text('本当に連携しますか？'),
-                        content: const Text('クレジットカードと連携して、自動で記録しますか？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext, false),
-                            child: const Text('やめる'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext, true),
-                            child: const Text('はい'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-
-                  if (confirm != true) return;
-
-                  if (!context.mounted) return;
-
-                  await showDialog(
-                    context: context,
-                    builder: (dialogContext) {
-                      return AlertDialog(
-                        title: const Text('クレカ連携、ありません笑'),
-                        content: const Text(
-                          'このアプリは、あえて自動連携をしていません。\n\n'
-                          '入力するひと手間が、使いすぎへの気づきにつながるからです。\n\n'
-                          '少し面倒ですが、いっしょに財布と向き合っていきましょう。\n\n'
-                          '👉 まずは今日の支出を1つだけ記録してみましょう。'
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('OK'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.savings_outlined),
-                title: const Text('予算設定'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const BudgetPage(),
-                    ),
-                  );
-                  if (result == true) {
-                    await _loadInitialData();
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.summarize_outlined),
-                title: const Text('今週のまとめ'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ReportPage(expenses: _expenses),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_month_outlined),
-                title: const Text('月のレポート'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MonthlyReportPage(
-                        periodStart: currentCycleStart,
-                        periodEnd: currentCycleEnd,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 24,
+                        color: Color(0xFFFF8A65),
                       ),
                     ),
-                  );
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.backup_outlined),
-                title: const Text('バックアップと復元'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const BackupRestorePage(),
+                    const SizedBox(height: 14),
+                    Text(
+                      '財布の余命',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
                     ),
-                  );
-                  if (result == true) {
-                    await _loadInitialData();
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.restore),
-                title: const Text('購入を復元'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PremiumPage(),
+                    const SizedBox(height: 4),
+                    Text(
+                      '設定・機能一覧',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  );
-                  if (result == true) {
-                    await _loadPremiumStatus();
-                  }
-                },
+                  ],
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: const Text('利用規約'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('プライバシーポリシー'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (kDebugMode) ...[
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8F9FC),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE6E9F2)),
+                        ),
+                        child: Text(
+                          'デバッグ時刻: ${DateFormat('yyyy/MM/dd').format(getNow())}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                    _DrawerSectionLabel(
+                      title: 'アカウント',
+                      theme: theme,
+                    ),
+                    _DrawerTile(
+                      icon: isLoggedIn
+                          ? Icons.verified_user_outlined
+                          : Icons.person_outline,
+                      title: isLoggedIn ? 'ログイン中' : '未ログイン',
+                      subtitle: isLoggedIn
+                          ? (currentUser?.email?.isNotEmpty == true
+                              ? currentUser!.email!
+                              : 'Apple / Google アカウントで利用中')
+                          : 'アカウント登録・ログインで引き継ぎできます',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BackupRestorePage(),
+                          ),
+                        );
+                        if (result == true) {
+                          await _loadInitialData();
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _DrawerSectionLabel(
+                      title: 'プレミアム',
+                      theme: theme,
+                    ),
+                    _DrawerTile(
+                      icon: Icons.workspace_premium_rounded,
+                      title: _isPremium ? 'プレミアム利用中' : 'プレミアム',
+                      subtitle: _isPremium
+                          ? 'すべてのプレミアム機能が使えます'
+                          : 'レポート・バッヂ・バックアップ・レシート機能を解放',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PremiumPage(),
+                          ),
+                        );
+                        if (result == true) {
+                          await _loadPremiumStatus();
+                        }
+                      },
+                    ),
+                    _DrawerTile(
+                      icon: Icons.credit_card_outlined,
+                      title: 'クレカ連携…？',
+                      subtitle: '自動連携について',
+                      onTap: () async {
+                        Navigator.pop(context);
+
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              title: const Text('本当に連携しますか？'),
+                              content: const Text('クレジットカードと連携して、自動で記録しますか？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, false),
+                                  child: const Text('やめる'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, true),
+                                  child: const Text('はい'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+
+                        if (confirm != true) return;
+
+                        if (!context.mounted) return;
+
+                        await showDialog(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              title: const Text('クレカ連携、ありません笑'),
+                              content: const Text(
+                                'このアプリは、あえて自動連携をしていません。\n\n'
+                                '入力するひと手間が、使いすぎへの気づきにつながるからです。\n\n'
+                                '少し面倒ですが、いっしょに財布と向き合っていきましょう。\n\n'
+                                '👉 まずは今日の支出を1つだけ記録してみましょう。'
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _DrawerSectionLabel(
+                      title: '機能',
+                      theme: theme,
+                    ),
+                    _DrawerTile(
+                      icon: Icons.savings_outlined,
+                      title: '予算設定',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BudgetPage(),
+                          ),
+                        );
+                        if (result == true) {
+                          await _loadInitialData();
+                        }
+                      },
+                    ),
+                    _DrawerTile(
+                      icon: Icons.summarize_outlined,
+                      title: '今週のまとめ',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ReportPage(expenses: _expenses),
+                          ),
+                        );
+                      },
+                    ),
+                    _DrawerTile(
+                      icon: Icons.calendar_month_outlined,
+                      title: '月のレポート',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MonthlyReportPage(
+                              periodStart: currentCycleStart,
+                              periodEnd: currentCycleEnd,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _DrawerSectionLabel(
+                      title: 'データ管理',
+                      theme: theme,
+                    ),
+                    _DrawerTile(
+                      icon: Icons.backup_outlined,
+                      title: '新規登録/ログイン',
+                      subtitle: 'バックアップと復元',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BackupRestorePage(),
+                          ),
+                        );
+                        if (result == true) {
+                          await _loadInitialData();
+                        }
+                      },
+                    ),
+                    _DrawerTile(
+                      icon: Icons.restore,
+                      title: '購入を復元',
+                      subtitle: '以前の課金状態を確認します',
+                      onTap: () async {
+                        Navigator.pop(context);
+
+                        try {
+                          await Purchases.restorePurchases();
+                          _hasLoadedPremium = false;
+                          await _loadPremiumStatus();
+
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _isPremium
+                                    ? '購入を復元しました'
+                                    : '復元できる購入は見つかりませんでした',
+                              ),
+                            ),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('購入の復元に失敗しました'),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _DrawerSectionLabel(
+                      title: 'その他',
+                      theme: theme,
+                    ),
+                    _DrawerTile(
+                      icon: Icons.description_outlined,
+                      title: '利用規約',
+                      onTap: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                    _DrawerTile(
+                      icon: Icons.privacy_tip_outlined,
+                      title: 'プライバシーポリシー',
+                      onTap: () {
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -883,626 +1133,670 @@ Future<void> _openDebugTimeMenu() async {
           ),
         ],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isGeneratingMonthlyReport
-                    ? null
-                    : _generateMonthlyReportForTest,
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: const Text('月レポート作成（テスト）'),
-              ),
-            ),
-            if (_monthlyReportStatusMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _monthlyReportStatusMessage!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.black54,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            SummaryCard(
-              isLoading: _isInitialLoading,
-              remainingBudget: remainingBudget,
-              walletLifeDays: realWalletLifeDays,
-              remainingPeriodDays: remainingPeriodDays,
-              totalBudget: _totalBudget,
-              usedAmount: usedAmount,
-              remainingTitle: remainingBudgetResult.title,
-              remainingMessage: remainingBudgetResult.message,
-              remainingSubMessage: remainingBudgetResult.subMessage,
-              cyclePeriod: cyclePeriodText,
-              dailySpendingPaceYen: dailySpendingPaceYen,
-              plannedDailyBudgetYen: plannedDailyBudgetYen,
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RankDetailPage(
-                      rankResult: _rankResult,
-                    ),
-                  ),
-                );
-              },
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFF0F0F0)),
-                ),
-                child: Row(
-                  children: [
-                    _rankBadge(_rankResult?.rankKey, size: 52),
-                    const SizedBox(width: 12),
-Expanded(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
+      body: Stack(
         children: [
-          Expanded(
-            child: Text(
-              'やりくりランク',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.black45,
-          ),
-        ],
-      ),
-      const SizedBox(height: 4),
-      Text(
-        _rankResult?.rankLabel ?? 'スターター',
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: Colors.black87,
-        ),
-      ),
-      const SizedBox(height: 10),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FC),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0xFFEDEDED)),
-            ),
-            child: Text(
-              '${_rankResult?.streak ?? 0}ヶ月連続で予算内',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ],
-  ),
-),
-                  ],
-                ),
-              ),
-            ),
-            if (dangerCategories.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Container(
+          SafeArea(
+            child: ListView(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4F1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFFFD7CC)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '⚠ 危険カテゴリ',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+              children: [
+                if (_monthlyReportStatusMessage != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F9FC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE6E9F2)),
+                    ),
+                    child: Row(
+                      children: [
+                        if (_isGeneratingMonthlyReport) ...[
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 10),
+                        ] else ...[
+                          const Icon(
+                            Icons.description_outlined,
+                            size: 18,
+                            color: Colors.black54,
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Expanded(
+                          child: Text(
+                            _monthlyReportStatusMessage!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (dangerCategories.isEmpty)
-                    const Text('カテゴリ予算を設定すると、危険カテゴリがここに表示されます。')
-                  else
-                    ...dangerCategories.map((category) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          children: [
-                            Text(
-                              category['badge'] as String,
-                              style: const TextStyle(fontSize: 22),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                ],
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    SummaryCard(
+                      isLoading: _isInitialLoading,
+                      remainingBudget: remainingBudget,
+                      walletLifeDays: realWalletLifeDays,
+                      remainingPeriodDays: remainingPeriodDays,
+                      totalBudget: _totalBudget,
+                      usedAmount: usedAmount,
+                      remainingTitle: remainingBudgetResult.title,
+                      remainingMessage: remainingBudgetResult.message,
+                      remainingSubMessage: remainingBudgetResult.subMessage,
+                      cyclePeriod: cyclePeriodText,
+                      dailySpendingPaceYen: dailySpendingPaceYen,
+                      plannedDailyBudgetYen: plannedDailyBudgetYen,
+                    ),
+                    if (hasReceiptOverlay)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: -88,
+                        child: _buildSummaryReceiptOverlay(
+                          theme: theme,
+                          usageRate: budgetUsageRate,
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(height: 16),
+                InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RankDetailPage(
+                          rankResult: _rankResult,
+                        ),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(22),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFF0F0F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        _rankBadge(_rankResult?.rankKey, size: 52),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  Text(
-                                    category['name'] as String,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
+                                  Expanded(
+                                    child: Text(
+                                      'やりくりランク',
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
+                                  const Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: Colors.black45,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _rankResult?.rankLabel ?? 'スターター',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8F9FC),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(color: const Color(0xFFEDEDED)),
+                                    ),
+                                    child: Text(
+                                      '${_rankResult?.streak ?? 0}ヶ月連続で予算内',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (dangerCategories.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF4F1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFFD7CC)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '⚠ 危険カテゴリ',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (dangerCategories.isEmpty)
+                          const Text('カテゴリ予算を設定すると、危険カテゴリがここに表示されます。')
+                        else
+                          ...dangerCategories.map((category) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    category['badge'] as String,
+                                    style: const TextStyle(fontSize: 22),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          category['name'] as String,
+                                          style: theme.textTheme.titleSmall?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Builder(builder: (_) {
+                                          final remaining = category['remaining'] as int;
+                                          final usageRate = category['usageRate'] as double;
+
+                                          Color textColor;
+                                          if (remaining < 0) {
+                                            textColor = Colors.red;
+                                          } else if (usageRate >= 0.9) {
+                                            textColor = Colors.red;
+                                          } else if (usageRate >= 0.75) {
+                                            textColor = Colors.orange;
+                                          } else {
+                                            textColor = Colors.black87;
+                                          }
+
+                                          if (remaining < 0) {
+                                            return Text(
+                                              '予算オーバー ¥${_formatYen(remaining.abs())}',
+                                              style: TextStyle(
+                                                color: textColor,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            );
+                                          }
+
+                                          return Text(
+                                            '残り ¥${_formatYen(remaining)} (${(usageRate * 100).round()}%)',
+                                            style: TextStyle(
+                                              color: textColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                    ),
+                                  ),
                                   Builder(builder: (_) {
                                     final remaining = category['remaining'] as int;
                                     final usageRate = category['usageRate'] as double;
 
-                                    Color textColor;
+                                    Color color;
+
                                     if (remaining < 0) {
-                                      textColor = Colors.red;
+                                      color = Colors.red;
                                     } else if (usageRate >= 0.9) {
-                                      textColor = Colors.red;
+                                      color = Colors.red;
                                     } else if (usageRate >= 0.75) {
-                                      textColor = Colors.orange;
+                                      color = Colors.orange;
                                     } else {
-                                      textColor = Colors.black87;
+                                      color = Colors.grey;
                                     }
 
-                                    if (remaining < 0) {
-                                      return Text(
-                                        '予算オーバー ¥${_formatYen(remaining.abs())}',
-                                        style: TextStyle(
-                                          color: textColor,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      );
-                                    }
-
-                                    return Text(
-                                      '残り ¥${_formatYen(remaining)} (${(usageRate * 100).round()}%)',
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    return Icon(
+                                      Icons.warning_amber_rounded,
+                                      color: color,
                                     );
                                   }),
                                 ],
                               ),
-                            ),
-                            Builder(builder: (_) {
-                              final remaining = category['remaining'] as int;
-                              final usageRate = category['usageRate'] as double;
-
-                              Color color;
-
-                              if (remaining < 0) {
-                                color = Colors.red; // 予算オーバー
-                              } else if (usageRate >= 0.9) {
-                                color = Colors.red; // 危険
-                              } else if (usageRate >= 0.75) {
-                                color = Colors.orange; // 注意
-                              } else {
-                                color = Colors.grey;
-                              }
-
-                              return Icon(
-                                Icons.warning_amber_rounded,
-                                color: color,
-                              );
-                            }),
-                          ],
-                        ),
-                      );
-                    }),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
-            ),
-            ],
-            const SizedBox(height: 16),
-            ...roastCards.expand((card) => [
-                  RoastCard(
-                    title: card.title,
-                    message: card.message,
-                    subMessage: card.subMessage,
+                const SizedBox(height: 16),
+                ...roastCards.expand((card) => [
+                      RoastCard(
+                        title: card.title,
+                        message: card.message,
+                        subMessage: card.subMessage,
+                      ),
+                      const SizedBox(height: 12),
+                    ]),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFF0F0F0)),
                   ),
-                  const SizedBox(height: 12),
-                ]),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFF0F0F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'カテゴリ別予算',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'カテゴリごとの進み方を確認できます',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Builder(
-                    builder: (context) {
-                      final hasOverflowCategory = categorySummaries.any(
-                        (c) => (c['remaining'] as int) < 0,
-                      );
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'カテゴリ別予算',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'カテゴリごとの進み方を確認できます',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          final hasOverflowCategory = categorySummaries.any(
+                            (c) => (c['remaining'] as int) < 0,
+                          );
 
-                      return SizedBox(
-                        height: hasOverflowCategory ? 180 : 164,
-                    child: categorySummaries.isEmpty
-                        ? Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: const Center(
-                              child: Text('カテゴリ予算を設定するとここに一覧が表示されます。'),
-                            ),
-                          )
-                        : Column(
-                            children: [
-                              Expanded(
-                                child: Scrollbar(
-                                  controller: _categoryScrollController,
-                                  thumbVisibility: false,
-                                  trackVisibility: false,
-                                  radius: const Radius.circular(999),
-                                  thickness: 4,
-                                  scrollbarOrientation: ScrollbarOrientation.bottom,
-                                  child: ListView.separated(
-                                    controller: _categoryScrollController,
-                                    scrollDirection: Axis.horizontal,
-                                  itemCount: categorySummaries.length,
-                                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                                    itemBuilder: (context, index) {
-                                      final category = categorySummaries[index];
-                                      final budget = category['budget'] as int;
-                                      final used = category['used'] as int;
-                                      final progress = budget == 0
-                                          ? 0.0
-                                          : (used / budget).clamp(0.0, 1.0);
+                          return SizedBox(
+                            height: hasOverflowCategory ? 180 : 164,
+                            child: categorySummaries.isEmpty
+                                ? Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    child: const Center(
+                                      child: Text('カテゴリ予算を設定するとここに一覧が表示されます。'),
+                                    ),
+                                  )
+                                : Column(
+                                    children: [
+                                      Expanded(
+                                        child: Scrollbar(
+                                          controller: _categoryScrollController,
+                                          thumbVisibility: false,
+                                          trackVisibility: false,
+                                          radius: const Radius.circular(999),
+                                          thickness: 4,
+                                          scrollbarOrientation: ScrollbarOrientation.bottom,
+                                          child: ListView.separated(
+                                            controller: _categoryScrollController,
+                                            scrollDirection: Axis.horizontal,
+                                            itemCount: categorySummaries.length,
+                                            separatorBuilder: (_, __) => const SizedBox(width: 10),
+                                            itemBuilder: (context, index) {
+                                              final category = categorySummaries[index];
+                                              final budget = category['budget'] as int;
+                                              final used = category['used'] as int;
+                                              final progress = budget == 0
+                                                  ? 0.0
+                                                  : (used / budget).clamp(0.0, 1.0);
 
-                                      return Container(
-                                        width: 150,
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(18),
-                                          border: Border.all(
-                                            color: const Color(0xFFEDEDED),
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              '${category['badge']} ${category['name']}',
-                                              style: theme.textTheme.titleSmall?.copyWith(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '予算 ¥${_formatYen(budget)}',
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                color: Colors.black54,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Builder(builder: (_) {
-                                              final remaining = category['remaining'] as int;
-                                              final usageRate = category['usageRate'] as double;
-
-                                              Color textColor;
-                                              if (remaining < 0) {
-                                                textColor = Colors.red;
-                                              } else if (usageRate >= 0.9) {
-                                                textColor = Colors.red;
-                                              } else if (usageRate >= 0.75) {
-                                                textColor = Colors.orange;
-                                              } else {
-                                                textColor = Colors.black87;
-                                              }
-
-                                              if (remaining < 0) {
-                                                return Text(
-                                                  '予算オーバー ¥${_formatYen(remaining.abs())}',
-                                                  style: TextStyle(
-                                                    color: textColor,
-                                                    fontWeight: FontWeight.w700,
+                                              return Container(
+                                                width: 150,
+                                                padding: const EdgeInsets.all(14),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius: BorderRadius.circular(18),
+                                                  border: Border.all(
+                                                    color: const Color(0xFFEDEDED),
                                                   ),
-                                                );
-                                              }
-                                              return Text(
-                                                '残り ¥${_formatYen(remaining)}',
-                                                style: TextStyle(
-                                                  color: textColor,
-                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      '${category['badge']} ${category['name']}',
+                                                      style: theme.textTheme.titleSmall?.copyWith(
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '予算 ¥${_formatYen(budget)}',
+                                                      style: theme.textTheme.bodySmall?.copyWith(
+                                                        color: Colors.black54,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Builder(builder: (_) {
+                                                      final remaining = category['remaining'] as int;
+                                                      final usageRate = category['usageRate'] as double;
+
+                                                      Color textColor;
+                                                      if (remaining < 0) {
+                                                        textColor = Colors.red;
+                                                      } else if (usageRate >= 0.9) {
+                                                        textColor = Colors.red;
+                                                      } else if (usageRate >= 0.75) {
+                                                        textColor = Colors.orange;
+                                                      } else {
+                                                        textColor = Colors.black87;
+                                                      }
+
+                                                      if (remaining < 0) {
+                                                        return Text(
+                                                          '予算オーバー ¥${_formatYen(remaining.abs())}',
+                                                          style: TextStyle(
+                                                            color: textColor,
+                                                            fontWeight: FontWeight.w700,
+                                                          ),
+                                                        );
+                                                      }
+                                                      return Text(
+                                                        '残り ¥${_formatYen(remaining)}',
+                                                        style: TextStyle(
+                                                          color: textColor,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      );
+                                                    }),
+                                                    const SizedBox(height: 8),
+                                                    ClipRRect(
+                                                      borderRadius: BorderRadius.circular(999),
+                                                      child: LinearProgressIndicator(
+                                                        value: progress,
+                                                        minHeight: 8,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Text('${(progress * 100).round()}% 使用'),
+                                                  ],
                                                 ),
                                               );
-                                            }),
-                                            const SizedBox(height: 8),
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(999),
-                                              child: LinearProgressIndicator(
-                                                value: progress,
-                                                minHeight: 8,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text('${(progress * 100).round()}% 使用'),
-                                          ],
+                                            },
+                                          ),
                                         ),
-                                      );
-                                    },
+                                      ),
+                                      const SizedBox(height: 6),
+                                    ],
                                   ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFF0F0F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '分析',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '支出の傾向や振り返りを確認できます',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RankingPage(
+                                expenses: _expenses,
+                                formatYen: _formatYen,
+                              ),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FC),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFEDEDED)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF1EA),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.pie_chart_outline_rounded),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '何に使っている？',
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'カテゴリ別の支出ランキングを見る',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: Colors.black54,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.chevron_right_rounded),
                             ],
                           ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            const SizedBox(height: 16),
-Container(
-  padding: const EdgeInsets.all(16),
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(22),
-    border: Border.all(color: const Color(0xFFF0F0F0)),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        '分析',
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        '支出の傾向や振り返りを確認できます',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: Colors.black54,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      const SizedBox(height: 12),
-      InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => RankingPage(
-                expenses: _expenses,
-                formatYen: _formatYen,
-              ),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8F9FC),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEDEDED)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1EA),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.pie_chart_outline_rounded),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '何に使っている？',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'カテゴリ別の支出ランキングを見る',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(height: 10),
-      InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MoneyUsagePage(),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8F9FC),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEDEDED)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF4FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.bar_chart_rounded),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'どう使ってる？',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '総額・カテゴリ・お店・月別で分析',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded),
-            ],
-          ),
-        ),
-      ),
-    ],
-  ),
-),
-            const SizedBox(height: 16),
-           Text(
-              'タイムライン',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (currentCycleExpenses.isEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text('まだ支出がありません。最初の支出を追加してみましょう。'),
-              ),
-              const SizedBox(height: 90),
-            ] else ...[
-              ...currentCycleExpenses.take(10).expand((expense) => [
-                    Dismissible(
-                      key: ValueKey(expense.id),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF1F1),
-                          borderRadius: BorderRadius.circular(18),
                         ),
                       ),
-                      secondaryBackground: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFE1E1),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Icon(
-                          Icons.delete_outline,
-                          color: Color(0xFFD64B4B),
-                          size: 28,
-                        ),
-                      ),
-                      confirmDismiss: (_) async {
-                        final deleted = await _deleteExpense(expense);
-                        return deleted;
-                      },
-                      child: TimelineItem(
-                        title: expense.storeName,
-                        subtitle: expense.category,
-                        amount: '¥${_formatYen(expense.amount)}',
-                        icon: _iconForCategory(expense.category),
-                        date: _formatTimelineDate(expense.createdAt),
-                        onEdit: () async {
-                          await _editExpense(expense);
-                        },
-                        onDelete: () async {
-                          await _deleteExpense(expense);
-                        },
-                      ),
-                    ),
-                    if (expense.futureLogMessage != null) ...[
                       const SizedBox(height: 10),
-                      FutureLogItem(message: expense.futureLogMessage!),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MoneyUsagePage(),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FC),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFEDEDED)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEAF4FF),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.bar_chart_rounded),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'どう使ってる？',
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '総額・カテゴリ・お店・月別で分析',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: Colors.black54,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.chevron_right_rounded),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
-                    const SizedBox(height: 10),
-                  ]),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'タイムライン',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (currentCycleExpenses.isEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text('まだ支出がありません。最初の支出を追加してみましょう。'),
+                  ),
+                  const SizedBox(height: 90),
+                ] else ...[
+                  ...currentCycleExpenses.take(10).expand((expense) => [
+                        Dismissible(
+                          key: ValueKey(expense.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF1F1),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          secondaryBackground: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE1E1),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Color(0xFFD64B4B),
+                              size: 28,
+                            ),
+                          ),
+                          confirmDismiss: (_) async {
+                            final deleted = await _deleteExpense(expense);
+                            return deleted;
+                          },
+                          child: TimelineItem(
+                            title: expense.storeName,
+                            subtitle: expense.category,
+                            amount: '¥${_formatYen(expense.amount)}',
+                            icon: _iconForCategory(expense.category),
+                            date: _formatTimelineDate(expense.createdAt),
+                            onEdit: () async {
+                              await _editExpense(expense);
+                            },
+                            onDelete: () async {
+                              await _deleteExpense(expense);
+                            },
+                          ),
+                        ),
+                        if (expense.futureLogMessage != null) ...[
+                          const SizedBox(height: 10),
+                          FutureLogItem(message: expense.futureLogMessage!),
+                        ],
+                        const SizedBox(height: 10),
+                      ]),
                   Center(
                     child: TextButton(
                       onPressed: _openFullTimeline,
                       child: const Text('一覧へ'),
                     ),
-                ),
-              const SizedBox(height:  70),
-            ]
-          ],
-        ),
+                  ),
+                  const SizedBox(height: 70),
+                ]
+              ],
+            ),
+          ),
+          if (hasFullScreenReceiptOverlay)
+            Positioned.fill(
+              child: _buildFullScreenReceiptOverlay(
+                usageRate: budgetUsageRate,
+              ),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -1566,6 +1860,7 @@ Future<bool> _deleteExpense(Expense expense) async {
   if (shouldDelete != true) return false;
 
   await IsarService.deleteExpense(expense.id);
+  await flutterLocalNotificationsPlugin.cancel(id: expense.id);
   if (_isPremium) {
     await ExpenseSyncService.deleteExpense(expense.id);
   }
@@ -1591,13 +1886,13 @@ void _openFullTimeline() {
   );
 }
 
-Future<void> _autoGenerateMonthlyReportIfNeeded() async {
+
+  Future<void> _autoGenerateMonthlyReportIfNeeded() async {
   final budgetSetting = await IsarService.getBudgetSetting();
   if (budgetSetting == null) return;
   if (budgetSetting.totalBudget <= 0) return;
 
   final cycleStartDay = budgetSetting.cycleStartDay.clamp(1, 28);
-  // final now = DateTime.now();
   final now = getNow();
   final baseStart = now.day >= cycleStartDay
       ? DateTime(now.year, now.month, cycleStartDay)
@@ -1609,14 +1904,81 @@ Future<void> _autoGenerateMonthlyReportIfNeeded() async {
     baseStart.day,
   );
 
+  final currentId = budgetSetting.currentBudgetHistoryLocalId;
+  if (currentId == null) return;
+
+  final currentHistory = await IsarService.getBudgetHistoryById(currentId);
+  if (currentHistory == null) return;
+
+  final histories = await IsarService.getBudgetHistories();
+  final sorted = [...histories]..sort((a, b) => a.startDate.compareTo(b.startDate));
+  final currentIndex = sorted.indexWhere((h) => h.id == currentId);
+
+  if (currentIndex <= 0) {
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingMonthlyReport = false;
+      _monthlyReportStatusMessage = null;
+    });
+    return;
+  }
+
+  final previousHistory = sorted[currentIndex - 1];
+  final existingReport = await MonthlyReportService.getReportForHistoryLocalId(
+    localId: previousHistory.id,
+  );
+
+  if (existingReport != null) {
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingMonthlyReport = false;
+      _monthlyReportStatusMessage = null;
+    });
+    return;
+  }
+
+  if (mounted) {
+    setState(() {
+      _isGeneratingMonthlyReport = true;
+      _monthlyReportStatusMessage = '月のレポートを作成しています...';
+    });
+  }
+
   try {
-    await MonthlyReportService.autoGenerateIfNeeded(
+    final didGenerate = await MonthlyReportService.autoGenerateIfNeeded(
       now: now,
       currentCycleStart: currentCycleStart,
       cycleStartDay: cycleStartDay,
     );
+
+    if (!mounted) return;
+
+    if (!didGenerate) {
+      setState(() {
+        _isGeneratingMonthlyReport = false;
+        _monthlyReportStatusMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isGeneratingMonthlyReport = false;
+      _monthlyReportStatusMessage = '月のレポートを作成しました';
+    });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() {
+        _monthlyReportStatusMessage = null;
+      });
+    });
   } catch (e) {
     debugPrint('[MonthlyReport] auto generate skipped: $e');
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingMonthlyReport = false;
+      _monthlyReportStatusMessage = null;
+    });
   }
 }
 
@@ -1729,3 +2091,187 @@ Future<void> _autoGenerateMonthlyReportIfNeeded() async {
     return roastCards;
   }
   }
+
+  // Drawer section label widget
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel({
+    required this.title,
+    required this.theme,
+  });
+
+  final String title;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      child: Text(
+        title,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: Colors.black54,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerTile extends StatelessWidget {
+  const _DrawerTile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: const Color(0xFFF8F9FC),
+        borderRadius: BorderRadius.circular(18),
+        child: ListTile(
+          onTap: onTap,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 4,
+          ),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: Colors.black87),
+          ),
+          title: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: subtitle == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    subtitle!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.black54,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: Colors.black38,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _ReceiptDecorationItem {
+  const _ReceiptDecorationItem({
+    this.left,
+    this.right,
+    required this.top,
+    required this.width,
+    required this.rotation,
+    required this.opacity,
+  });
+
+  final double? left;
+  final double? right;
+  final double top;
+  final double width;
+  final double rotation;
+  final double opacity;
+}
+
+class _ReceiptDecorationCard extends StatelessWidget {
+  const _ReceiptDecorationCard({
+    required this.width,
+  });
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: width * 1.42,
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE9E9E9)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 6,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE5DB),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...List.generate(
+            5,
+            (index) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Container(
+                width: double.infinity,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: index.isEven
+                      ? const Color(0xFFE8ECF2)
+                      : const Color(0xFFF1F3F6),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              width: 26,
+              height: 6,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD2C4),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
