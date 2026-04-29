@@ -4796,7 +4796,10 @@ if (_isSameContext(baseLatestComment, priorityLatestComment)) {
   notificationSource = priorityLatestComment!;
 }
 
-
+// Avoid duplicate headline between primary and secondary comment
+if (uiLatestComment.message == secondaryMessage) {
+  secondaryMessage = '';
+}
 return _composeLayeredResult(
   languageCode: lang,
   title: latestExpense.storeName.isNotEmpty

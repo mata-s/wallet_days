@@ -79,6 +79,9 @@ class RemainingBudgetService {
           )
         : 0.0;
 
+    final isLatePeriod = progressRate >= 0.85;
+    final isMidPeriod = progressRate >= 0.35 && progressRate < 0.85;
+
     if (totalBudget == 0) {
       return RemainingBudgetResult(
         title: _title(lang),
@@ -217,93 +220,138 @@ class RemainingBudgetService {
         title: _title(lang),
         message: _t(lang, '残り${_formatMoney(remaining, lang)}', '${_formatMoney(remaining, lang)} left'),
         subMessage: _pick(
-          isBehind
+          isLatePeriod
               ? isEn
                   ? [
-                      'So far, this is a pretty strong pace.',
-                      'You are spending slower than the period is moving. Nice.',
-                      'If this continues, the month could stay very stable.',
-                      'For the middle of the period, this is honestly solid.',
-                      'You are creating some breathing room.',
+                      'With this much left near the end, this is a strong finish.',
+                      'Almost at the end, and there is still breathing room. Nice.',
+                      'This is a pretty good landing for the final stretch.',
+                      'Near the finish line, this looks well controlled.',
+                      'The month is almost done, and the wallet is still standing.',
                     ]
                   : [
-                      '今のところ、かなりいいペースだね。',
-                      '期間より、うまく抑えられてるよ。',
-                      'このままいけると、かなり安定しそうだね。',
-                      '中盤としては、かなり優秀だよ。',
-                      '余裕を作れてる流れだね。',
+                      '終盤でこれだけ残ってるなら、かなりいい着地だよ。',
+                      'あと少しでこの余裕は、かなり優秀だね。',
+                      '最終盤としては、かなりうまく残せてるよ。',
+                      'ゴール前でこの残り方なら、かなり整ってるね。',
+                      '月末目前で財布がまだ立ってる。いい感じだよ。',
                     ]
-              : isAhead
+              : isBehind
                   ? isEn
                       ? [
-                          'For the middle of the period, the pace is a little fast.',
-                          'Not dangerous yet, but worth watching.',
-                          'At this rate, the second half may feel heavier.',
-                          'You can still adjust from here.',
-                          'A little forward-leaning, but not out of control.',
+                          'So far, this is a pretty strong pace.',
+                          'You are spending slower than the period is moving. Nice.',
+                          'If this continues, the month could stay very stable.',
+                          isMidPeriod
+                              ? 'For the middle of the period, this is honestly solid.'
+                              : 'For this point in the period, this is honestly solid.',
+                          'You are creating some breathing room.',
                         ]
                       : [
-                          '中盤としては、少しペース早めだね。',
-                          'まだ危険ではないけど、進み方は見ておきたいよ。',
-                          'このままだと、後半が少し重くなるかもね。',
-                          '今ならまだ調整できるよ。',
-                          '少し前のめりだけど、まだ戻せるね。',
+                          '今のところ、かなりいいペースだね。',
+                          '期間より、うまく抑えられてるよ。',
+                          'このままいけると、かなり安定しそうだね。',
+                          isMidPeriod
+                              ? '中盤としては、かなり優秀だよ。'
+                              : '今の時点としては、かなり優秀だよ。',
+                          '余裕を作れてる流れだね。',
                         ]
-                  : isEn
-                      ? [
-                          'Still pretty calm.',
-                          'So far, not a bad flow at all.',
-                          'For the middle of the period, this feels natural.',
-                          'Looks like things are still under control.',
-                          'So far, steady enough.',
-                        ]
-                      : [
-                          'まだ落ち着いてるね。',
-                          '今のところ、悪くない流れだよ。',
-                          '中盤としては、かなり自然だね。',
-                          'この感じなら、まだコントロールできてるよ。',
-                          '今のところ順調だね。',
-                        ],
+                  : isAhead
+                      ? isEn
+                          ? [
+                              isMidPeriod
+                                  ? 'For the middle of the period, the pace is a little fast.'
+                                  : 'For this point in the period, the pace is a little fast.',
+                              'Not dangerous yet, but worth watching.',
+                              'At this rate, the second half may feel heavier.',
+                              'You can still adjust from here.',
+                              'A little forward-leaning, but not out of control.',
+                            ]
+                          : [
+                              isMidPeriod
+                                  ? '中盤としては、少しペース早めだね。'
+                                  : '今の時点としては、少しペース早めだね。',
+                              'まだ危険ではないけど、進み方は見ておきたいよ。',
+                              'このままだと、後半が少し重くなるかもね。',
+                              '今ならまだ調整できるよ。',
+                              '少し前のめりだけど、まだ戻せるね。',
+                            ]
+                      : isEn
+                          ? [
+                              'Still pretty calm.',
+                              'So far, not a bad flow at all.',
+                              isMidPeriod
+                                  ? 'For the middle of the period, this feels natural.'
+                                  : 'For this point in the period, this feels natural.',
+                              'Looks like things are still under control.',
+                              'So far, steady enough.',
+                            ]
+                          : [
+                              'まだ落ち着いてるね。',
+                              '今のところ、悪くない流れだよ。',
+                              isMidPeriod
+                                  ? '中盤としては、かなり自然だね。'
+                                  : '今の時点としては、かなり自然だね。',
+                              'この感じなら、まだコントロールできてるよ。',
+                              '今のところ順調だね。',
+                            ]
         ),
       );
     }
 
     final isEarly = progressRate <= 0.35;
+    final isVeryLate = progressRate >= 0.85;
     return RemainingBudgetResult(
       title: _title(lang),
       message: _t(lang, '残り${_formatMoney(remaining, lang)}', '${_formatMoney(remaining, lang)} left'),
       subMessage: _pick(
-        isEarly
+        isVeryLate
             ? isEn
                 ? [
-                    'Still plenty of room.',
-                    'Good start so far.',
-                    'At this point, things are looking calm.',
-                    'Still early, and there is real room left.',
-                    'The month is still young. Nice opening move.',
+                    'Almost done, and this much room left is excellent.',
+                    'This is a very strong finish.',
+                    'Near the end of the period, this is more than enough room.',
+                    'The wallet is finishing the month with confidence.',
+                    'This is not just comfortable. This is a clean landing.',
                   ]
                 : [
-                    'まだかなり余裕あるね。',
-                    '出だしとしてはいい感じだよ。',
-                    '今の時点では、かなり落ち着いてるね。',
-                    'まだ序盤だね。余裕はしっかりあるよ。',
-                    'ここから全部決まるね。いいスタートだよ。',
+                    'あと少しでこの余裕は、かなりすごいよ。',
+                    'これはかなり強い着地だね。',
+                    '終盤でこれだけ残ってるなら、十分すぎるくらいだよ。',
+                    '財布、かなり余裕を持って月末を迎えてるね。',
+                    '余裕どころか、かなりきれいな着地だよ。',
                   ]
-            : isEn
-                ? [
-                    'Still some comfortable room left.',
-                    'Things are still calm.',
-                    'Good flow so far.',
-                    'This is looking pretty steady.',
-                    'This pace feels good.',
-                  ]
-                : [
-                    '今のところ余裕あるね。',
-                    'まだ落ち着いてるね。',
-                    'いい流れだね。',
-                    'かなり順調だね。',
-                    'この感じ、かなりいいね。',
-                  ],
+            : isEarly
+                ? isEn
+                    ? [
+                        'Still plenty of room.',
+                        'Good start so far.',
+                        'At this point, things are looking calm.',
+                        'Still early, and there is real room left.',
+                        'The month is still young. Nice opening move.',
+                      ]
+                    : [
+                        'まだかなり余裕あるね。',
+                        '出だしとしてはいい感じだよ。',
+                        '今の時点では、かなり落ち着いてるね。',
+                        'まだ序盤だね。余裕はしっかりあるよ。',
+                        'ここから全部決まるね。いいスタートだよ。',
+                      ]
+                : isEn
+                    ? [
+                        'Still some comfortable room left.',
+                        'Things are still calm.',
+                        'Good flow so far.',
+                        'This is looking pretty steady.',
+                        'This pace feels good.',
+                      ]
+                    : [
+                        '今のところ余裕あるね。',
+                        'まだ落ち着いてるね。',
+                        'いい流れだね。',
+                        'かなり順調だね。',
+                        'この感じ、かなりいいね。',
+                      ]
       ),
     );
   }

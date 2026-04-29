@@ -148,6 +148,9 @@ class SummaryCard extends StatelessWidget {
                     final showCharacter =
                         !isLoading && characterImagePath != null;
 
+                    final isLatePeriod = remainingPeriodDays <= 3;
+                    final isEndingSoon = remainingPeriodDays <= 7;
+
                     String _getAdvice(double progress) {
                       if (!hasBudget) {
                         final advices = [
@@ -159,38 +162,58 @@ class SummaryCard extends StatelessWidget {
                         advices.shuffle();
                         return advices.first;
                       }
-                      final List<String> advices = progress >= 1
+
+                      // 予算オーバーは時期に関係なく状態ベースで扱う
+                      if (progress >= 1) {
+                        final advices = [
+                          _t(context, '来月に期待だね', 'Let’s reset next month.'),
+                          _t(context, '今月はここまでだね', 'That may be it for this month.'),
+                          _t(context, '今回はちょっと使いすぎたね', 'You spent a little too much this time.'),
+                          _t(context, '次の期間に向けて作戦を変えよう', 'Let’s change the plan for the next period.'),
+                          if (isLatePeriod) ...[
+                            _t(context, 'ゴールは近いから、ここからは追加ダメージを止めたいね。', 'The finish is close, so let’s stop the extra damage here.'),
+                            _t(context, 'ラインは越えたけど、月末は近い。落ち着いて着地しよう。', 'The budget line is crossed, but the month is nearly over. Let’s land it calmly.'),
+                          ],
+                        ];
+                        advices.shuffle();
+                        return advices.first;
+                      }
+
+                      // 終盤でも、極端に余りそうな時だけ専用コメントにする
+                      if (isLatePeriod && hasBudget && progress < 0.55) {
+                        final advices = [
+                          _t(context, 'あと少しでこれだけ残ってるなら、かなり余らせられそうだね。', 'Almost done, and you still have plenty left.'),
+                          _t(context, 'この期間、きれいに余らせて終われそうだね。', 'This period may end with a clean surplus.'),
+                        ];
+                        advices.shuffle();
+                        return advices.first;
+                      }
+
+                      final List<String> advices = progress >= 0.9
                           ? [
-                              _t(context, '来月に期待だね', 'Let’s reset next month.'),
-                              _t(context, '今月はここまでだね', 'That may be it for this month.'),
-                              _t(context, '今回はちょっと使いすぎたね', 'You spent a little too much this time.'),
-                              _t(context, '次の期間に向けて作戦を変えよう', 'Let’s change the plan for the next period.'),
+                              _t(context, 'ここからは少し慎重にいこう', 'Let’s be careful from here.'),
+                              _t(context, 'あと少し、バランス大事だよ', 'Just a little left. Balance matters.'),
+                              _t(context, '終盤戦、ちょっとだけ意識しよう', 'Final stretch. Spend with care.'),
+                              _t(context, '残り日数を見ながら整えていこう', 'Keep an eye on the days left.'),
                             ]
-                          : progress >= 0.9
+                          : progress >= 0.75
                               ? [
-                                  _t(context, 'ここからは少し慎重にいこう', 'Let’s be careful from here.'),
-                                  _t(context, 'あと少し、バランス大事だよ', 'Just a little left. Balance matters.'),
-                                  _t(context, '終盤戦、ちょっとだけ意識しよう', 'Final stretch. Spend with care.'),
-                                  _t(context, '残り日数を見ながら整えていこう', 'Keep an eye on the days left.'),
+                                  _t(context, 'ここから少し意識していこう', 'Start paying a little more attention.'),
+                                  _t(context, '油断は禁物', 'Don’t let your guard down.'),
+                                  _t(context, 'ここから少しだけ引き締めよう', 'Time to tighten things up a bit.'),
                                 ]
-                              : progress >= 0.75
+                              : progress >= 0.5
                                   ? [
-                                      _t(context, 'ここから少し意識していこう', 'Start paying a little more attention.'),
-                                      _t(context, '油断は禁物', 'Don’t let your guard down.'),
-                                      _t(context, 'ここから少しだけ引き締めよう', 'Time to tighten things up a bit.'),
+                                      _t(context, '予定外の支出だけ見張っておこう', 'Watch out for unexpected spending.'),
+                                      _t(context, 'この調子なら無理なく進めそう', 'This pace looks manageable.'),
+                                      _t(context, '必要なものはちゃんと買って大丈夫', 'It’s okay to buy what you need.'),
+                                      _t(context, 'このままいこう', 'Keep it going.'),
                                     ]
-                                  : progress >= 0.5
-                                      ? [
-                                          _t(context, '予定外の支出だけ見張っておこう', 'Watch out for unexpected spending.'),
-                                          _t(context, 'この調子なら無理なく進めそう', 'This pace looks manageable.'),
-                                          _t(context, '必要なものはちゃんと買って大丈夫', 'It’s okay to buy what you need.'),
-                                          _t(context, 'このままいこう', 'Keep it going.'),
-                                        ]
-                                      : [
-                                          _t(context, '今のうちに少し貯金側へ回せるかも', 'You might be able to save a little now.'),
-                                          _t(context, '使う日と抑える日の差をつけやすいね', 'You have room to balance spend days and quiet days.'),
-                                          _t(context, '後半に備えて余力を残しておこう', 'Keep some room for later.'),
-                                        ];
+                                  : [
+                                      _t(context, '今のうちに少し貯金側へ回せるかも', 'You might be able to save a little now.'),
+                                      _t(context, '使う日と抑える日の差をつけやすいね', 'You have room to balance spend days and quiet days.'),
+                                      _t(context, '後半に備えて余力を残しておこう', 'Keep some room for later.'),
+                                    ];
                       advices.shuffle();
                       return advices.first;
                     }
@@ -205,30 +228,69 @@ class SummaryCard extends StatelessWidget {
                         labels.shuffle();
                         return labels.first;
                       }
-                      final List<String> labels = progress >= 1
+
+                      // 予算オーバーは時期に関係なく状態ベースで扱う
+                      if (progress >= 1) {
+                        final labels = [
+                          _t(context, '作戦変更だ…', 'Time to change the plan...'),
+                          _t(context, '予算オーバー中だよ', 'Over budget'),
+                          if (isLatePeriod) ...[
+                            _t(context, 'ここから防衛戦', 'Damage control'),
+                            _t(context, '着地を整えよう', 'Land it calmly'),
+                          ],
+                        ];
+                        labels.shuffle();
+                        return labels.first;
+                      }
+
+                      if (isLatePeriod && hasBudget) {
+                        final labels = progress < 0.55
+                            ? [
+                                _t(context, 'かなり余りそう', 'Likely to have plenty left'),
+                                _t(context, '余裕着地できそう', 'Likely a comfortable finish'),
+                              ]
+                            : progress < 0.85
+                                ? [
+                                    _t(context, 'いい着地になりそう', 'Looking like a good finish'),
+                                    _t(context, '終盤も安定中', 'Stable final stretch'),
+                                  ]
+                                : [
+                                    _t(context, '終盤戦だよ', 'Final stretch'),
+                                    _t(context, 'ラストスパート', 'Last push'),
+                                  ];
+
+                        labels.shuffle();
+                        return labels.first;
+                      }
+
+                      if (isEndingSoon && hasBudget) {
+                        final labels = [
+                          _t(context, '終盤に入ってきたね', 'Entering final phase'),
+                          _t(context, 'もうすぐ終わり', 'Almost done'),
+                        ];
+                        labels.shuffle();
+                        return labels.first;
+                      }
+
+                      final List<String> labels = progress >= 0.9
                           ? [
-                              _t(context, '作戦変更だ…', 'Time to change the plan...'),
-                              _t(context, '予算オーバー中だよ', 'Over budget'),
+                              _t(context, '残りわずか', 'Almost out'),
+                              _t(context, 'もうすぐ限界かも…', 'Almost at the limit...'),
                             ]
-                          : progress >= 0.9
+                          : progress >= 0.75
                               ? [
-                                  _t(context, '残りわずか', 'Almost out'),
-                                  _t(context, 'もうすぐ限界かも…', 'Almost at the limit...'),
+                                  _t(context, '注意ゾーンだよ', 'Caution zone'),
+                                  _t(context, '慎重にいこう', 'Go carefully'),
                                 ]
-                              : progress >= 0.75
+                              : progress >= 0.5
                                   ? [
-                                      _t(context, '注意ゾーンだよ', 'Caution zone'),
-                                      _t(context, '慎重にいこう', 'Go carefully'),
+                                      _t(context, '安定ペースだよ', 'Steady pace'),
+                                      _t(context, 'いいペースだね', 'Good pace'),
                                     ]
-                                  : progress >= 0.5
-                                      ? [
-                                          _t(context, '安定ペースだよ', 'Steady pace'),
-                                          _t(context, 'いいペースだね', 'Good pace'),
-                                        ]
-                                      : [
-                                          _t(context, '余裕ゾーンだね', 'Comfort zone'),
-                                          _t(context, 'かなり余裕あるよ', 'Plenty of room'),
-                                        ];
+                                  : [
+                                      _t(context, '余裕ゾーンだね', 'Comfort zone'),
+                                      _t(context, 'かなり余裕あるよ', 'Plenty of room'),
+                                    ];
                       labels.shuffle();
                       return labels.first;
                     }

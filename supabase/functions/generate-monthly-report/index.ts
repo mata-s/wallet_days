@@ -611,7 +611,7 @@ Create exactly one short title that fits this user based on the data below.
 
 Goal:
 - Make the title memorable, slightly funny, and affectionate
-- It may lightly hint at the app's character, but do not overuse the word "wallet"
+- It may lightly hint at the app's character
 - Keep it useful and based on the data, not random
 
 Rules:
@@ -626,7 +626,6 @@ Rules:
 - Reflect categories or stores only when they are strongly relevant
 - Avoid negative, critical, guilt-inducing, or aggressive wording
 - Do not use medical, financial advice, or gambling-like wording
-- Use the word "wallet" at most once across title and reason combined
 
 Data:
 Budget: ${formatMoney(args.totalBudget, args.lang)}
@@ -642,7 +641,7 @@ Categories: ${JSON.stringify(args.topCategories)}
 
 目的:
 - ただの節約称号ではなく、少しクスッとできて記憶に残る称号にする
-- アプリのキャラクター感を少しだけ匂わせる。ただし「財布」という単語を多用しない
+- アプリのキャラクター感を少しだけ匂わせる
 - ただしデータに基づいた納得感は必ず残す
 
 ルール:
@@ -667,7 +666,6 @@ Categories: ${JSON.stringify(args.topCategories)}
 - 批判的・攻撃的な表現
 - 不安を煽る表現
 - 医療・金融助言っぽい表現
-- titleとreasonを合わせて「財布」は最大1回まで
 
 データ:
 予算: ${formatMoney(args.totalBudget, args.lang)}
@@ -756,7 +754,7 @@ You are a badge design assistant for a monthly budgeting report in a budgeting a
 Look at this period's budgeting data and create up to 3 fun, affectionate English badges.
 
 Goal:
-- Badges should feel like small trophies from the app's character, without repeating the word "wallet"
+- Badges should feel like small trophies from the app's character
 - Make them memorable, slightly witty, and still clearly based on the data
 - Keep the tone kind, never mocking
 
@@ -772,7 +770,6 @@ Rules:
 - A little dry humor is welcome, but keep the character flavor subtle
 - Do not exaggerate too much
 - Avoid guilt, fear, criticism, or aggressive wording
-- Across all badges, use the word "wallet" at most once total
 
 Examples of tone:
 - "Wallet Whisperer"
@@ -794,7 +791,7 @@ Context: ${args.historyText}
 この期間の家計データを見て、面白くて少し愛着が湧く日本語バッヂを最大3個考えてください。
 
 目的:
-- アプリのキャラクターからもらう小さなトロフィーのようなバッヂにする。ただし「財布」という単語を多用しない
+- アプリのキャラクターからもらう小さなトロフィーのようなバッヂにする
 - 少しクスッとできるが、ちゃんとデータに基づいた納得感を残す
 - ユーザーを責めず、前向きにする
 
@@ -820,7 +817,6 @@ Context: ${args.historyText}
 - ネガティブすぎる表現
 - 批判的・攻撃的な表現
 - 不安を煽る表現
-- すべてのバッヂ全体で「財布」は最大1回まで
 
 期間: ${args.periodStart} 〜 ${args.periodEnd}
 予算: ${formatMoney(args.totalBudget, args.lang)}
@@ -1059,7 +1055,6 @@ Rules:
 - About 2 to 3 sentences
 - Do not blame the user
 - Keep it positive and slightly supportive
-- Avoid repeating the word "wallet"; use it at most once, and only if it feels natural
 - Do not overdo jokes
 - Do not imply the app can chat, counsel, or provide ongoing personal support
 - Do not say "feel free to ask", "talk to me anytime", or "I'm here to help"
@@ -1088,7 +1083,6 @@ History: ${args.historyText}
 - 日本語で自然な文章
 - 2〜3文程度
 - 責めない・前向き・少し寄り添うトーン
-- 「財布」という単語は最大1回まで。無理に使わない
 - ただし冗談を入れすぎない
 - アプリや人が会話・相談対応できるような表現は禁止
 - 「いつでも相談してください」「また相談してね」「気軽に話してください」などの文は禁止
