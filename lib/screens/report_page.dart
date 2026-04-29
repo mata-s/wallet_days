@@ -1,11 +1,10 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/services/weekly_report_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class ReportPage extends StatelessWidget {
+class ReportPage extends StatefulWidget {
   final List<Expense> expenses;
 
   const ReportPage({
@@ -14,12 +13,54 @@ class ReportPage extends StatelessWidget {
   });
 
   @override
+  State<ReportPage> createState() => _ReportPageState();
+}
+
+class _ReportPageState extends State<ReportPage> {
+  String? _languageOverride; // 'ja' or 'en'
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguagePreference();
+  }
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String _formatMoney(int amount) {
+    if (_currentLang() == 'ja') {
+      return '¥${NumberFormat('#,###').format(amount)}';
+    }
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(amount / 100);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final start = _startOfWeek(now);
     final end = start.add(const Duration(days: 6));
     final report = WeeklyReportService.generate(
-      expenses: expenses,
+      expenses: widget.expenses,
       start: start,
       end: end,
     );
@@ -27,7 +68,7 @@ class ReportPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('今週のまとめ'),
+        title: Text(_t('今週のまとめ', 'Weekly summary')),
         centerTitle: true,
       ),
       body: ListView(
@@ -43,7 +84,7 @@ class ReportPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今週のふりかえり',
+                  _t('今週のふりかえり', 'This week review'),
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -68,7 +109,7 @@ class ReportPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '今週の支出',
+                        _t('今週の支出', 'This week spending'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.black54,
                           fontWeight: FontWeight.w600,
@@ -76,14 +117,14 @@ class ReportPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        _formatYen(report.totalExpense),
+                        _formatMoney(report.totalExpense),
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        '先週との差',
+                        _t('先週との差', 'Difference from last week'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.black54,
                           fontWeight: FontWeight.w600,
@@ -117,15 +158,28 @@ class ReportPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'ひとこと',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Image.asset(
+                        'assets/images/usually.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _t('財布のひとこと', 'Wallet says'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  report.comment,
+                  _currentLang() == 'ja' ? report.comment : report.commentEn,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     height: 1.7,
                     color: Colors.black87,
@@ -145,7 +199,7 @@ class ReportPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'よく使ったカテゴリ',
+                  _t('よく使ったカテゴリ', 'Top categories'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -153,7 +207,7 @@ class ReportPage extends StatelessWidget {
                 const SizedBox(height: 14),
                 if (report.categories.isEmpty)
                   Text(
-                    '今週はまだ支出データがありません。',
+                    _t('今週はまだ支出データがありません。', 'No spending data yet this week'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: Colors.black54,
                     ),
@@ -185,7 +239,7 @@ class ReportPage extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                _formatYen(category.amount),
+                                _formatMoney(category.amount),
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -208,24 +262,24 @@ class ReportPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '先週との比較',
+                  _t('先週との比較', 'Comparison with last week'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 14),
                 _ComparisonRow(
-                  label: '今週',
-                  value: _formatYen(report.totalExpense),
+                  label: _t('今週', 'This week'),
+                  value: _formatMoney(report.totalExpense),
                 ),
                 const SizedBox(height: 10),
                 _ComparisonRow(
-                  label: '先週',
-                  value: _formatYen(report.previousWeekExpense),
+                  label: _t('先週', 'Last week'),
+                  value: _formatMoney(report.previousWeekExpense),
                 ),
                 const SizedBox(height: 10),
                 _ComparisonRow(
-                  label: '前週比',
+                  label: _t('前週比', 'Week over week'),
                   value: _formatChangeRate(report.changeRate),
                 ),
               ],
@@ -247,18 +301,14 @@ class ReportPage extends StatelessWidget {
     return DateFormat('M/d').format(date);
   }
 
-  String _formatYen(int value) {
-    return '¥${NumberFormat('#,###').format(value)}';
-  }
-
   String _formatDifference(int value) {
     if (value > 0) {
-      return '+${_formatYen(value)}';
+      return '+${_formatMoney(value)}';
     }
     if (value < 0) {
-      return '-${_formatYen(value.abs())}';
+      return '-${_formatMoney(value.abs())}';
     }
-    return '±¥0';
+    return _currentLang() == 'ja' ? '±¥0' : '\$0.00';
   }
 
   String _formatChangeRate(double value) {

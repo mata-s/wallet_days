@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:saiyome/screens/welcome_page.dart';
 import 'package:saiyome/screens/home_page.dart';
 import 'package:saiyome/models/isar_service.dart';
@@ -8,6 +9,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:app_links/app_links.dart';
+
+import 'dart:async';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -175,6 +181,83 @@ class SaiyomeApp extends StatefulWidget {
 class _SaiyomeAppState extends State<SaiyomeApp> {
   String? _initializedUserId;
   Future<void>? _setupFuture;
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _uriSubscription;
+  bool _handledInitialUri = false;
+  bool _isResettingHomeFromWidget = false;
+
+  Locale _resolveLocale(Locale? deviceLocale) {
+    if (deviceLocale?.languageCode == 'ja') {
+      return const Locale('ja');
+    }
+    return const Locale('en');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _handleInitialUri();
+    _uriSubscription = _appLinks.uriLinkStream.listen(
+      _handleIncomingUri,
+      onError: (Object error) {
+        debugPrint('[DeepLink] Stream error: $error');
+      },
+    );
+  }
+
+  Future<void> _handleInitialUri() async {
+    if (_handledInitialUri) return;
+    _handledInitialUri = true;
+
+    try {
+      final uri = await _appLinks.getInitialLink();
+      _handleIncomingUri(uri);
+    } catch (e) {
+      debugPrint('[DeepLink] Failed to get initial uri: $e');
+    }
+  }
+
+  void _handleIncomingUri(Uri? uri) {
+    if (uri == null) return;
+
+    debugPrint('[DeepLink] Received uri: $uri');
+
+    if (uri.scheme != 'walletdays') return;
+    if (uri.host != 'quick-add' && uri.host != 'add-expense') return;
+
+    // Widgetから起動した場合は、HomePageをrootにして開く。
+    // 以前の画面スタックを残すと、ホーム画面からスワイプで戻れるように見えるためリセットする。
+    _resetToHomeFromWidget();
+  }
+
+  void _resetToHomeFromWidget({int retryCount = 0}) {
+    if (_isResettingHomeFromWidget) return;
+    _isResettingHomeFromWidget = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = navigatorKey.currentState;
+      if (navigator == null || !navigator.mounted) {
+        _isResettingHomeFromWidget = false;
+        if (retryCount < 20) {
+          Future<void>.delayed(
+            const Duration(milliseconds: 200),
+            () => _resetToHomeFromWidget(retryCount: retryCount + 1),
+          );
+        }
+        return;
+      }
+
+      navigator.popUntil((route) => route.isFirst);
+
+      _isResettingHomeFromWidget = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _uriSubscription?.cancel();
+    super.dispose();
+  }
 
   Future<void> _ensureUserSetup(User user) {
     if (_initializedUserId == user.id && _setupFuture != null) {
@@ -195,8 +278,21 @@ class _SaiyomeAppState extends State<SaiyomeApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: '財布の余命',
+      supportedLocales: const [
+        Locale('ja'),
+        Locale('en'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      localeResolutionCallback: (deviceLocale, supportedLocales) {
+        return _resolveLocale(deviceLocale);
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF8A65)),
         useMaterial3: true,

@@ -8,6 +8,7 @@ class TimelineItem extends StatelessWidget {
   final String date;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final String? languageCode;
 
   const TimelineItem({
     super.key,
@@ -18,11 +19,18 @@ class TimelineItem extends StatelessWidget {
     required this.date,
     this.onEdit,
     this.onDelete,
+    this.languageCode,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    final currentLang = languageCode ?? Localizations.localeOf(context).languageCode;
+
+    String t(String ja, String en) {
+      return currentLang == 'ja' ? ja : en;
+    }
 
     final hasActions = onEdit != null || onDelete != null;
 
@@ -92,7 +100,7 @@ class TimelineItem extends StatelessWidget {
                           IconButton(
                             onPressed: onEdit,
                             icon: const Icon(Icons.edit_outlined, size: 20),
-                            tooltip: '編集',
+                            tooltip: t('編集', 'Edit'),
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
@@ -107,7 +115,7 @@ class TimelineItem extends StatelessWidget {
                               size: 20,
                               color: Colors.black45,
                             ),
-                            tooltip: '削除',
+                            tooltip: t('削除', 'Delete'),
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),

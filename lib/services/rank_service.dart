@@ -4,22 +4,26 @@ import 'package:saiyome/utils/time_provider.dart';
 class RankResult {
   final String rankKey;
   final String rankLabel;
+  final String rankLabelEn;
   final int achievedCount;
   final int totalCount;
   final int streak;
   final int bestStreak;
   final double successRate;
   final String comment;
+  final String commentEn;
 
   const RankResult({
     required this.rankKey,
     required this.rankLabel,
+    required this.rankLabelEn,
     required this.achievedCount,
     required this.totalCount,
     required this.streak,
     required this.bestStreak,
     required this.successRate,
     required this.comment,
+    required this.commentEn,
   });
 }
 
@@ -29,12 +33,14 @@ class RankService {
       return const RankResult(
         rankKey: 'starter',
         rankLabel: 'スターター',
+        rankLabelEn: 'Starter',
         achievedCount: 0,
         totalCount: 0,
         streak: 0,
         bestStreak: 0,
         successRate: 0,
-        comment: 'まずは最初の1ヶ月を達成してみましょう。',
+        comment: 'まずは最初の1ヶ月を達成してみよう。',
+        commentEn: '“Start with your first good month. I’ll watch your budget with you.”',
       );
     }
 
@@ -73,7 +79,14 @@ class RankService {
       successRate: successRate,
     );
     final rankLabel = _rankLabel(rankKey);
+    final rankLabelEn = _rankLabelEn(rankKey);
     final comment = _buildComment(
+      rankKey: rankKey,
+      streak: streak,
+      totalCount: totalCount,
+      successRate: successRate,
+    );
+    final commentEn = _buildCommentEn(
       rankKey: rankKey,
       streak: streak,
       totalCount: totalCount,
@@ -83,12 +96,14 @@ class RankService {
     return RankResult(
       rankKey: rankKey,
       rankLabel: rankLabel,
+      rankLabelEn: rankLabelEn,
       achievedCount: achievedCount,
       totalCount: totalCount,
       streak: streak,
       bestStreak: bestStreak,
       successRate: successRate,
       comment: comment,
+      commentEn: commentEn,
     );
   }
 
@@ -125,6 +140,23 @@ class RankService {
         return 'スターター';
     }
   }
+  
+  static String _rankLabelEn(String rankKey) {
+    switch (rankKey) {
+      case 'diamond':
+        return 'Diamond';
+      case 'platinum':
+        return 'Platinum';
+      case 'gold':
+        return 'Gold';
+      case 'silver':
+        return 'Silver';
+      case 'bronze':
+        return 'Bronze';
+      default:
+        return 'Starter';
+    }
+  }
 
   static String _buildComment({
     required String rankKey,
@@ -133,28 +165,58 @@ class RankService {
     required double successRate,
   }) {
     final percent = (successRate * 100).round();
-
     if (totalCount < 3) {
-      return 'まずは3ヶ月分ためると、あなたの予算ペースが見えやすくなります。';
+      return '「まずはあと少しデータをためよう。ペース、一緒に見ていこうね。」';
     }
 
     if (streak >= 3) {
-      return '$streakヶ月連続で予算内です。この調子です。';
+      return '「$streakヶ月連続で守れてるよ。このままいけそうだね。」';
     }
 
     switch (rankKey) {
       case 'diamond':
-        return '$totalCountヶ月のうち達成率は$percent%です。かなり安定して予算管理できています。';
+        return '「達成率$percent%だね。すごい安定感だよ。」';
       case 'platinum':
-        return '$totalCountヶ月のうち達成率は$percent%です。予算管理がかなり上手です。';
+        return '「達成率$percent%。かなり上手にやれてるよ。」';
       case 'gold':
-        return '$totalCountヶ月のうち達成率は$percent%です。良いペースで予算内を達成できています。';
+        return '「達成率$percent%。いいペースだね。」';
       case 'silver':
-        return '$totalCountヶ月で達成率は$percent%です。だんだん安定してきています。次はゴールドを目指せそうです。';
+        return '「達成率$percent%。だいぶ安定してきたね。」';
       case 'bronze':
-        return '$totalCountヶ月で達成率は$percent%です。まずは安定して予算内を増やしていきましょう。';
+        return '「達成率$percent%。いいスタートだよ。」';
       default:
-        return '$totalCountヶ月で達成率は$percent%です。まずはブロンズを目指していきましょう。';
+        return '「ここからだね。一緒にペース作っていこう。」';
+    }
+  }
+
+  static String _buildCommentEn({
+    required String rankKey,
+    required int streak,
+    required int totalCount,
+    required double successRate,
+  }) {
+    final percent = (successRate * 100).round();
+    if (totalCount < 3) {
+      return '“Let’s collect a little more data first. I’ll watch your pace with you.”';
+    }
+
+    if (streak >= 3) {
+      return '“You’ve stayed on track for $streak months in a row. I think we can keep this going.”';
+    }
+
+    switch (rankKey) {
+      case 'diamond':
+        return '“Your success rate is $percent%. That consistency is amazing.”';
+      case 'platinum':
+        return '“$percent% success rate. You’re handling this really well.”';
+      case 'gold':
+        return '“$percent% success rate. Nice pace.”';
+      case 'silver':
+        return '“$percent% success rate. You’re getting more stable.”';
+      case 'bronze':
+        return '“$percent% success rate. Nice start.”';
+      default:
+        return '“This is where we begin. Let’s build your pace together.”';
     }
   }
 }

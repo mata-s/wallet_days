@@ -1,7 +1,6 @@
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/services/expense_judge_service.dart';
 import 'package:saiyome/services/spending_rule_service.dart';
-import 'package:saiyome/services/unknown_expense_ai_service.dart';
 
 
 class RoastResult {
@@ -102,6 +101,29 @@ class _MonthlyCategoryCopySet {
 }
 
 class RoastService {
+  static String _normalizeLang(String? languageCode) {
+    return languageCode == 'en' ? 'en' : 'ja';
+  }
+
+  static bool _isEnglish(String languageCode) {
+    return _normalizeLang(languageCode) == 'en';
+  }
+
+  static String _t(String languageCode, String ja, String en) {
+    return _isEnglish(languageCode) ? en : ja;
+  }
+
+  static String _noteTitle(String languageCode) {
+    return _t(languageCode, '財布からひとこと', 'A note from your wallet');
+  }
+
+  static String _formatMoney(int amount, String languageCode) {
+    if (_isEnglish(languageCode)) {
+      final dollars = amount / 100.0;
+      return '\$${dollars.toStringAsFixed(2)}';
+    }
+    return '$amount円';
+  }
   static const List<String> cafeKeywords = [
     'スタバ',
     'スターバックス',
@@ -114,6 +136,14 @@ class RoastService {
     'doutor',
     'cafe',
     'カフェ',
+    'coffee',
+    'espresso',
+    'latte',
+    'cappuccino',
+    'costa',
+    'peets',
+    'blue bottle',
+    'tim hortons',
   ];
 
   static const List<String> convenienceKeywords = [
@@ -123,6 +153,12 @@ class RoastService {
     'ファミマ',
     'ファミリーマート',
     'ミニストップ',
+    '7-eleven',
+    'seven eleven',
+    'lawson',
+    'familymart',
+    'convenience',
+    'mini stop',
   ];
 
   static const List<String> onlineShoppingKeywords = [
@@ -136,27 +172,51 @@ class RoastService {
     'mercari',
     'shop',
     '通販',
+    'ebay',
+    'aliexpress',
+    'shein',
+    'temu',
+    'etsy',
+    'store',
+    'online',
   ];
 
   static bool _isCafe(Expense e) {
     final name = e.storeName.toLowerCase();
-    if (e.category == 'カフェ') return true;
+    final category = e.category.trim().toLowerCase();
+    if (category == 'カフェ' || category == 'cafe' || category == 'coffee') return true;
     return cafeKeywords.any((k) => name.contains(k.toLowerCase()));
   }
 
   static bool _isConvenience(Expense e) {
     final name = e.storeName.toLowerCase();
-    if (e.category == 'コンビニ') return true;
+    final category = e.category.trim().toLowerCase();
+    if (category == 'コンビニ' ||
+        category == 'convenience' ||
+        category == 'convenience store') {
+      return true;
+    }
     return convenienceKeywords.any((k) => name.contains(k.toLowerCase()));
   }
 
   static bool _isDining(Expense e) {
-    return e.category == '外食';
+    final category = e.category.trim().toLowerCase();
+    return category == '外食' ||
+        category == 'dining' ||
+        category == 'restaurant' ||
+        category == 'restaurants' ||
+        category == 'eating out';
   }
 
   static bool _isOnlineShopping(Expense e) {
     final name = e.storeName.toLowerCase();
-    if (e.category == 'ネットショッピング' || e.category == '通販') {
+    final category = e.category.trim().toLowerCase();
+    if (category == 'ネットショッピング' ||
+        category == '通販' ||
+        category == 'online shopping' ||
+        category == 'shopping' ||
+        category == 'e-commerce' ||
+        category == 'ecommerce') {
       return true;
     }
     return onlineShoppingKeywords.any((k) => name.contains(k.toLowerCase()));
@@ -281,15 +341,17 @@ class RoastService {
   }
 
   static RoastResult _composeLayeredResult({
-    String title = '財布からひとこと',
+    required String languageCode,
+    String? title,
     String? leadMessage,
     String? leadSubMessage,
     required _MonthlyComment monthly,
     required _LatestComment latest,
     required _LatestComment notificationSource,
   }) {
+    final lang = _normalizeLang(languageCode);
     return _composeResult(
-      title: title,
+      title: title ?? _noteTitle(lang),
       scenarioKey: '${monthly.scenarioKey}_${latest.scenarioKey}',
       notificationBody: [
         notificationSource.message,
@@ -330,6 +392,7 @@ class RoastService {
   }
 
   static _LatestComment? _buildPriorityLatestComment({
+    required String languageCode,
     required int convenienceCount,
     required int cafeCount,
     required int diningCount,
@@ -343,81 +406,140 @@ class RoastService {
     required int? remainingPerDay,
     required int? daysLeft,
   }) {
+    final lang = _normalizeLang(languageCode);
+    final isEn = _isEnglish(lang);
     _LatestComment? best;
 
     if (latestStore.isNotEmpty && latestStoreCount >= 10) {
-      final variant = _pickVariant('priority_store_repeat_strong_$latestStore', [
-        (
-          message: '$latestStore、今月$latestStoreCount回です。',
-          subMessage: 'ここまで来ると、カテゴリより店の方が主役です。かなり強い習慣になっています。',
-        ),
-        (
-          message: '$latestStore、今月もう$latestStoreCount回目です。',
-          subMessage: '好きなお店の域を超えて、生活の一部になっています。財布もしっかり覚えています。',
-        ),
-        (
-          message: '$latestStore率、かなり高いです。',
-          subMessage: '今回は直近1件より、この店への通い方の方がかなり重要そうです。完全に流れができています。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_store_repeat_strong_$latestStore', isEn
+          ? [
+              (
+                message: '$latestStore again, huh',
+                subMessage: '$latestStoreCount times this month. That is basically a routine now.',
+              ),
+              (
+                message: 'You really like $latestStore',
+                subMessage: 'Already $latestStoreCount visits. This is turning into a habit.',
+              ),
+              (
+                message: '$latestStore shows up a lot',
+                subMessage: '$latestStoreCount times this month. Even the wallet memorized it.',
+              ),
+            ]
+          : [
+              (
+                message: 'また$latestStoreだね',
+                subMessage: '今月$latestStoreCount回目だよ。かなりおなじみだね。',
+              ),
+              (
+                message: '$latestStore、好きだね',
+                subMessage: 'もう$latestStoreCount回目だよ。ここまで来ると常連ペースだね。',
+              ),
+              (
+                message: '$latestStore、よく見るよ',
+                subMessage: '今月$latestStoreCount回目。財布もさすがに覚えてきたよ。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_store_repeat_strong',
-          notificationBody: '$latestStore の支出が今月$latestStoreCount回あります。',
+          notificationBody: _t(
+            lang,
+            '$latestStore の支出が今月$latestStoreCount回あるね。',
+            '$latestStore has $latestStoreCount visits this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 102,
         ),
       );
     } else if (latestStore.isNotEmpty && latestStoreCount >= 5) {
-      final variant = _pickVariant('priority_store_repeat_mid_$latestStore', [
-        (
-          message: '$latestStore、今月$latestStoreCount回目です。',
-          subMessage: 'かなり通っていますね。カテゴリより、この店の存在感の方が前に出てきています。',
-        ),
-        (
-          message: '$latestStore、今月もう$latestStoreCount回あります。',
-          subMessage: '好みがかなりはっきりしています。ここまで来ると、ちゃんと傾向です。',
-        ),
-        (
-          message: '$latestStore率、今月は高めです。',
-          subMessage: '今回は直近の1件より、この店への偏りの方がかなり見えてきます。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_store_repeat_mid_$latestStore', isEn
+          ? [
+              (
+                message: '$latestStore again, huh',
+                subMessage: '$latestStoreCount visits already. It is becoming your go-to spot.',
+              ),
+              (
+                message: '$latestStore shows up a lot',
+                subMessage: 'You are at $latestStoreCount times. Might be worth noticing the pattern.',
+              ),
+              (
+                message: '$latestStore is getting familiar',
+                subMessage: '$latestStoreCount visits this month. The wallet is starting to recognize it.',
+              ),
+            ]
+          : [
+              (
+                message: '$latestStore、また来たね',
+                subMessage: '今月$latestStoreCount回目だよ。ちょっと通い慣れてきたね。',
+              ),
+              (
+                message: '$latestStore、出番多いね',
+                subMessage: '$latestStoreCount回まで来たよ。そろそろクセになってるかもね。',
+              ),
+              (
+                message: '$latestStore、見覚えあるね',
+                subMessage: '今月$latestStoreCount回目。財布もだんだん覚えてきたよ。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_store_repeat_mid',
-          notificationBody: '$latestStore の支出が今月$latestStoreCount回あります。',
+          notificationBody: _t(
+            lang,
+            '$latestStore の支出が今月$latestStoreCount回あるね。',
+            '$latestStore shows up $latestStoreCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 92,
         ),
       );
     } else if (latestStore.isNotEmpty && latestStoreCount >= 3) {
-      final variant = _pickVariant('priority_store_repeat_light_$latestStore', [
-        (
-          message: '$latestStore、今月$latestStoreCount回目ですね。',
-          subMessage: '少しずつですが、この店に通う流れが見えてきています。',
-        ),
-        (
-          message: '$latestStore、今月$latestStoreCount回あります。',
-          subMessage: 'カテゴリより、この店の登場回数の方が少し気になってきました。',
-        ),
-        (
-          message: '$latestStore、今月はよく見かけます。',
-          subMessage: 'まだ強すぎるわけではありませんが、傾向としてはかなり見えやすくなっています。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_store_repeat_light_$latestStore', isEn
+          ? [
+              (
+                message: '$latestStore again',
+                subMessage: '$latestStoreCount times so far. A small pattern is forming.',
+              ),
+              (
+                message: '$latestStore is popping up',
+                subMessage: '$latestStoreCount visits. Not big yet, but noticeable.',
+              ),
+              (
+                message: '$latestStore, I have seen this',
+                subMessage: '$latestStoreCount times this month. Just keeping an eye on it.',
+              ),
+            ]
+          : [
+              (
+                message: '$latestStore、また出たね',
+                subMessage: '今月$latestStoreCount回目だよ。少し流れ見えてきたね。',
+              ),
+              (
+                message: '$latestStore、ちょい多めだね',
+                subMessage: '$latestStoreCount回目。まだ軽いけど、ちゃんと残るやつだね。',
+              ),
+              (
+                message: '$latestStore、よく見るね',
+                subMessage: '今月$latestStoreCount回目。少しずつ存在感出てきたね。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_store_repeat_light',
-          notificationBody: '$latestStore の支出が今月$latestStoreCount回あります。',
+          notificationBody: _t(
+            lang,
+            '$latestStore の支出が今月$latestStoreCount回あるね。',
+            '$latestStore has appeared $latestStoreCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 82,
@@ -426,26 +548,45 @@ class RoastService {
     }
 
     if (convenienceCount >= 4) {
-      final variant = _pickVariant('priority_convenience_repeat', [
-        (
-          message: 'コンビニ、今月$convenienceCount回ですね。',
-          subMessage: '直近の1件より、回数の方がかなり流れを作っています。手軽さがそのまま積み上がっています。',
-        ),
-        (
-          message: '今月、コンビニが$convenienceCount回あります。',
-          subMessage: '1回ずつは軽くても、ここまで来ると完全に傾向です。財布もしっかり気づいています。',
-        ),
-        (
-          message: 'コンビニ率、今月は高めです。',
-          subMessage: '単発よりも反復が目立っています。流れとして見るなら、いま一番前に出ている支出です。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_convenience_repeat_$lang', isEn
+          ? [
+              (
+                message: 'Convenience stores are adding up',
+                subMessage: '$convenienceCount visits this month. Easy stops have a way of quietly becoming a pattern.',
+              ),
+              (
+                message: 'Convenience store again, huh',
+                subMessage: '$convenienceCount times already. Small trips, not-so-small footprint.',
+              ),
+              (
+                message: 'The convenience store is showing up a lot',
+                subMessage: '$convenienceCount visits this month. Handy, yes. Invisible, not anymore.',
+              ),
+            ]
+          : [
+              (
+                message: 'コンビニ、積み上がってるね',
+                subMessage: '今月$convenienceCount回だよ。手軽さって、静かにクセになるね。',
+              ),
+              (
+                message: 'またコンビニだね',
+                subMessage: '$convenienceCount回目だよ。小さく見えて、ちゃんと残るやつだね。',
+              ),
+              (
+                message: 'コンビニ、よく見るね',
+                subMessage: '今月$convenienceCount回。便利だけど、もう見えない支出ではないね。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_convenience_repeat',
-          notificationBody: 'コンビニ支出が今月$convenienceCount回あります。',
+          notificationBody: _t(
+            lang,
+            'コンビニ支出が今月$convenienceCount回あるよ。',
+            'Convenience store spending showed up $convenienceCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 100,
@@ -454,26 +595,45 @@ class RoastService {
     }
 
     if (onlineShoppingCount >= 3) {
-      final variant = _pickVariant('priority_online_repeat', [
-        (
-          message: 'ネットショッピング、今月$onlineShoppingCount回です。',
-          subMessage: '直近の1件より、今月の反復の方がかなり目立っています。便利さが流れになっています。',
-        ),
-        (
-          message: '通販の回数、今月は少し強めです。',
-          subMessage: '単発よりも積み重ねの存在感が前に出ています。気づいたら届く流れになっています。',
-        ),
-        (
-          message: '今月のネット購入は$onlineShoppingCount回あります。',
-          subMessage: '今回は直近1件より、この回数の方がかなり重要そうです。反復が財布に効いています。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_online_repeat_$lang', isEn
+          ? [
+              (
+                message: 'Online orders are stacking up',
+                subMessage: '$onlineShoppingCount times this month. One tap is light, the trail is not.',
+              ),
+              (
+                message: 'Another online purchase pattern',
+                subMessage: '$onlineShoppingCount orders so far. The cart is starting to leave footprints.',
+              ),
+              (
+                message: 'Online shopping is getting loud',
+                subMessage: '$onlineShoppingCount times this month. The screen was quick, but the budget remembers.',
+              ),
+            ]
+          : [
+              (
+                message: 'ネット購入、増えてきたね',
+                subMessage: '今月$onlineShoppingCount回だよ。ワンタップは軽いけど、跡はちゃんと残るね。',
+              ),
+              (
+                message: 'またポチったね',
+                subMessage: '$onlineShoppingCount回目だよ。カートの足あと、少し見えてきたね。',
+              ),
+              (
+                message: 'ネット率、高めだね',
+                subMessage: '今月$onlineShoppingCount回。画面では一瞬でも、予算はちゃんと覚えてるよ。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_online_repeat',
-          notificationBody: 'ネットショッピング支出が今月$onlineShoppingCount回あります。',
+          notificationBody: _t(
+            lang,
+            'ネットショッピング支出が今月$onlineShoppingCount回あるよ。',
+            'Online shopping showed up $onlineShoppingCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 98,
@@ -482,26 +642,45 @@ class RoastService {
     }
 
     if (cafeCount >= 4) {
-      final variant = _pickVariant('priority_cafe_repeat', [
-        (
-          message: 'カフェ、今月$cafeCount回ですね。',
-          subMessage: '直近の1件より、回数の方がかなり傾向を作っています。気分転換が習慣になっています。',
-        ),
-        (
-          message: '今月、カフェが$cafeCount回あります。',
-          subMessage: '一杯ずつでも、ここまで来るとしっかり流れです。単発よりも反復が前に出ています。',
-        ),
-        (
-          message: 'カフェ率、今月は高めです。',
-          subMessage: '今回は直近1件より、この回数の方が見えてきます。じわじわ効くタイプです。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_cafe_repeat_$lang', isEn
+          ? [
+              (
+                message: 'Cafes are adding up',
+                subMessage: '$cafeCount visits this month. Small comfort, steady impact.',
+              ),
+              (
+                message: 'Cafe again, huh',
+                subMessage: '$cafeCount times already. Feels routine now, doesn’t it?',
+              ),
+              (
+                message: 'You really like cafes',
+                subMessage: '$cafeCount visits this month. The habit is starting to show.',
+              ),
+            ]
+          : [
+              (
+                message: 'カフェ、多いね',
+                subMessage: '今月$cafeCount回だよ。ちょっとした余裕が、そのままクセになってるね。',
+              ),
+              (
+                message: 'またカフェだね',
+                subMessage: '$cafeCount回目だよ。気づいたらルーティンっぽくなってきたね。',
+              ),
+              (
+                message: 'カフェ、好きだね',
+                subMessage: '今月$cafeCount回。心地よさのぶん、ちゃんと残るやつだね。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_cafe_repeat',
-          notificationBody: 'カフェ支出が今月$cafeCount回あります。',
+          notificationBody: _t(
+            lang,
+            'カフェ支出が今月$cafeCount回あるよ。',
+            'Cafe spending showed up $cafeCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 96,
@@ -510,26 +689,45 @@ class RoastService {
     }
 
     if (diningCount >= 3) {
-      final variant = _pickVariant('priority_dining_repeat', [
-        (
-          message: '外食、今月$diningCount回ですね。',
-          subMessage: '直近の1件より、外食の流れの方がかなり見えてきます。満足感のぶん、存在感もあります。',
-        ),
-        (
-          message: '今月の外食は$diningCount回あります。',
-          subMessage: '単発よりも回数の方が前に出ています。今月の使い方としては、かなり流れができています。',
-        ),
-        (
-          message: '外食ペース、今月は少し高めです。',
-          subMessage: '今回は直近1件より、この反復の方が重要そうです。後半の余裕に効いてきそうです。',
-        ),
-      ]);
+      final variant = _pickVariant('priority_dining_repeat_$lang', isEn
+          ? [
+              (
+                message: 'Eating out is picking up',
+                subMessage: '$diningCount times this month. Fun now, but it adds up quietly.',
+              ),
+              (
+                message: 'Dining out again, huh',
+                subMessage: '$diningCount visits already. The pace is getting noticeable.',
+              ),
+              (
+                message: 'Dining is becoming a pattern',
+                subMessage: '$diningCount times this month. Enjoyable, but not invisible anymore.',
+              ),
+            ]
+          : [
+              (
+                message: '外食、増えてきたね',
+                subMessage: '今月$diningCount回だよ。楽しいけど、ちゃんと積み上がってるね。',
+              ),
+              (
+                message: 'また外食だね',
+                subMessage: '$diningCount回目だよ。少しペース出てきてるね。',
+              ),
+              (
+                message: '外食、流れできてるね',
+                subMessage: '今月$diningCount回。楽しさのぶん、財布にも残ってるよ。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_dining_repeat',
-          notificationBody: '外食支出が今月$diningCount回あります。',
+          notificationBody: _t(
+            lang,
+            '外食支出が今月$diningCount回あるよ。',
+            'Dining out showed up $diningCount times this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 94,
@@ -538,52 +736,94 @@ class RoastService {
     }
 
     if (spendingRate >= 0.25) {
-      final variant = _pickVariant('priority_expensive_spending', [
-        (
-          message: '${latestExpense.storeName}で$amount円、今回はかなり大きいですね。',
-          subMessage: '回数よりもまずこの一撃の重さが前に出ています。今月の流れに対してもかなり存在感があります。',
-        ),
-        (
-          message: '$amount円の支出、かなり効いています。',
-          subMessage: '今回は直近の店名より、この金額の重さの方が重要そうです。財布もしっかり反応しています。',
-        ),
-        (
-          message: '${latestExpense.storeName}、今回は一回の重みが強いです。',
-          subMessage: '単発でも、ここまで大きいと今月の流れを変えやすい支出です。',
-        ),
-      ]);
+      final moneyText = _formatMoney(amount, lang);
+
+      final variant = _pickVariant('priority_expensive_spending_$lang', isEn
+          ? [
+              (
+                message: '$moneyText, that is a big hit',
+                subMessage: '${latestExpense.storeName} just made a noticeable dent. This could shift the month’s flow.',
+              ),
+              (
+                message: 'That one is heavy',
+                subMessage: '$moneyText carries weight. The wallet definitely felt that.',
+              ),
+              (
+                message: '${latestExpense.storeName} hit hard',
+                subMessage: '$moneyText in one go. Big enough to change the rhythm this month.',
+              ),
+            ]
+          : [
+              (
+                message: '$amount円、でかいね',
+                subMessage: '${latestExpense.storeName}の一撃だよ。今月の流れにもけっこう響きそうだね。',
+              ),
+              (
+                message: 'これは重いね',
+                subMessage: '$amount円はなかなかの存在感だよ。財布もちゃんと反応してる。',
+              ),
+              (
+                message: '${latestExpense.storeName}、一撃強めだね',
+                subMessage: '$amount円。単発でも、今月の流れを変えそうなサイズだよ。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_expensive_spending',
-          notificationBody: '${latestExpense.storeName}で大きめの支出を記録しました。',
+          notificationBody: _t(
+            lang,
+            '${latestExpense.storeName}、大きめの一撃だよ。',
+            '${latestExpense.storeName} made a big impact.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 82,
         ),
       );
     } else if (spendingRate >= 0.15) {
-      final variant = _pickVariant('priority_mid_spending', [
-        (
-          message: '${latestExpense.storeName}で$amount円、今回は少し重ためです。',
-          subMessage: '回数よりも、この一回の存在感の方が今は前に出ています。積み重なるとかなり効いてきそうです。',
-        ),
-        (
-          message: '$amount円の支出、じわっと大きいですね。',
-          subMessage: '今回は店名より、この金額感の方がかなり重要そうです。今月の余裕に効いてきます。',
-        ),
-        (
-          message: '${latestExpense.storeName}、今回の支出は存在感があります。',
-          subMessage: '単発でも軽くはないサイズなので、今月の流れとして少し意識したいところです。',
-        ),
-      ]);
+      final moneyText = _formatMoney(amount, lang);
+
+      final variant = _pickVariant('priority_mid_spending_$lang', isEn
+          ? [
+              (
+                message: '$moneyText, not small',
+                subMessage: '${latestExpense.storeName} has some weight. This will linger a bit.',
+              ),
+              (
+                message: 'That one will stick',
+                subMessage: '$moneyText is not huge, but it will quietly add up.',
+              ),
+              (
+                message: '${latestExpense.storeName} has presence',
+                subMessage: '$moneyText. Feels light now, but might hit later.',
+              ),
+            ]
+          : [
+              (
+                message: '$amount円、ちょい重めだね',
+                subMessage: '${latestExpense.storeName}の支出だよ。今月の余裕にじわっと効きそうだね。',
+              ),
+              (
+                message: 'これは少し効くね',
+                subMessage: '$amount円。小さくはないから、財布も見逃してないね。',
+              ),
+              (
+                message: '${latestExpense.storeName}、存在感あるね',
+                subMessage: '今回の$amount円は、あとで効いてくるタイプかもね。',
+              ),
+            ]);
 
       best = _higherPriorityLatestComment(
         best,
         _LatestComment(
           scenarioKey: 'priority_mid_spending',
-          notificationBody: '${latestExpense.storeName}でやや大きめの支出を記録しました。',
+          notificationBody: _t(
+            lang,
+            '${latestExpense.storeName}でやや大きめの支出を記録したよ。',
+            'A moderately large expense at ${latestExpense.storeName}.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
           priority: 78,
@@ -596,52 +836,90 @@ class RoastService {
         daysLeft > 0 &&
         remainingBudget > 0) {
       if (remainingPerDay <= 150) {
-        final variant = _pickVariant('priority_remaining_per_day_critical', [
-          (
-            message: '残り$daysLeft日で$remainingBudget円です。',
-            subMessage: '今回は店名より、ここからの厳しさの方がかなり重要です。1日ごとの余白がほぼありません。',
-          ),
-          (
-            message: 'あと$daysLeft日、残り$remainingBudget円ですね。',
-            subMessage: '直近1件より、この先の配分の方が前に出ています。かなり慎重にいきたいところです。',
-          ),
-          (
-            message: '残り$remainingBudget円で、あと$daysLeft日です。',
-            subMessage: '今月の流れとしてはかなりハードです。ここからは一回ごとの判断が重くなります。',
-          ),
-        ]);
+        final variant = _pickVariant('priority_remaining_per_day_critical_$lang', isEn
+            ? [
+                (
+                  message: 'Running thin now',
+                  subMessage: '$remainingBudget left for $daysLeft days. There is almost no room per day.',
+                ),
+                (
+                  message: 'This is survival mode',
+                  subMessage: '$remainingBudget over $daysLeft days. Every move counts now.',
+                ),
+                (
+                  message: 'Is the wallet still breathing?',
+                  subMessage: '$daysLeft days left with $remainingBudget. Each expense hits hard now.',
+                ),
+              ]
+            : [
+                (
+                  message: '残り、かなり薄いね',
+                  subMessage: 'あと$daysLeft日で$remainingBudget円だよ。1日ごとの余白はほぼないね。',
+                ),
+                (
+                  message: 'ここから耐久戦だね',
+                  subMessage: '残り$remainingBudget円であと$daysLeft日。かなり慎重モードだよ。',
+                ),
+                (
+                  message: '財布、息してる…？',
+                  subMessage: 'あと$daysLeft日あるのに残り$remainingBudget円だよ。ここからは一回ずつ重いね。',
+                ),
+              ]);
 
         best = _higherPriorityLatestComment(
           best,
           _LatestComment(
             scenarioKey: 'priority_remaining_per_day_critical',
-            notificationBody: '残り予算がかなり厳しくなっています。',
+            notificationBody: _t(
+              lang,
+              '残り予算がかなり厳しくなっているよ。',
+              'Your remaining budget is getting very tight.',
+            ),
             message: variant.message,
             subMessage: variant.subMessage,
             priority: 92,
           ),
         );
       } else if (remainingPerDay <= 300) {
-        final variant = _pickVariant('priority_remaining_per_day_warning', [
-          (
-            message: '残り$daysLeft日で$remainingBudget円です。',
-            subMessage: '今回は店名より、残り配分の方がかなり大事そうです。後半を楽にするなら少し整えたいところです。',
-          ),
-          (
-            message: 'あと$daysLeft日、残り$remainingBudget円ですね。',
-            subMessage: '直近1件よりも、この先の使い方の方が前に出ています。少し慎重なくらいがちょうどよさそうです。',
-          ),
-          (
-            message: '残り$remainingBudget円で、あと$daysLeft日です。',
-            subMessage: '今月の余白は少し細めです。ここからの配分を意識していきたいところです。',
-          ),
-        ]);
+        final variant = _pickVariant('priority_remaining_per_day_warning_$lang', isEn
+            ? [
+                (
+                  message: 'Getting a bit tight',
+                  subMessage: '$remainingBudget left for $daysLeft days. Might need to pace things now.',
+                ),
+                (
+                  message: 'Distribution matters now',
+                  subMessage: '$remainingBudget across $daysLeft days. Spending loosely could hurt later.',
+                ),
+                (
+                  message: 'Feels like endgame',
+                  subMessage: '$daysLeft days left, $remainingBudget remaining. Playing it safe might help.',
+                ),
+              ]
+            : [
+                (
+                  message: '残り、細めだね',
+                  subMessage: 'あと$daysLeft日で$remainingBudget円だよ。ここからは少し慎重にいこう。',
+                ),
+                (
+                  message: '配分、ちょい大事だね',
+                  subMessage: '残り$remainingBudget円であと$daysLeft日。雑に使うとすぐ苦しくなりそうだよ。',
+                ),
+                (
+                  message: '終盤戦っぽくなってきたね',
+                  subMessage: 'あと$daysLeft日、残り$remainingBudget円。少し守り気味でちょうどいいかもね。',
+                ),
+              ]);
 
         best = _higherPriorityLatestComment(
           best,
           _LatestComment(
             scenarioKey: 'priority_remaining_per_day_warning',
-            notificationBody: '残り予算の配分を意識したい状態です。',
+            notificationBody: _t(
+              lang,
+              '残り予算の配分を意識したい状態だね。',
+              'You may want to watch how you pace your remaining budget.',
+            ),
             message: variant.message,
             subMessage: variant.subMessage,
             priority: 76,
@@ -653,12 +931,45 @@ class RoastService {
     return best;
   }
 
-  static _MonthlyComment _defaultMonthlyComment() {
-    return const _MonthlyComment(
+  static _MonthlyComment _defaultMonthlyComment(String languageCode) {
+    final lang = _normalizeLang(languageCode);
+    final isEn = _isEnglish(lang);
+
+    final variant = _pickVariant('monthly_normal_$lang', isEn
+        ? [
+            (
+              message: 'Nothing is falling apart this month',
+              subMessage: 'The flow is stable. A bit of awareness should be enough to keep things on track.',
+            ),
+            (
+              message: 'Still holding steady',
+              subMessage: 'No major issues so far. Just keep an eye on the pace.',
+            ),
+            (
+              message: 'Looking balanced so far',
+              subMessage: 'No big swings. A little attention will go a long way.',
+            ),
+          ]
+        : [
+            (
+              message: '今月は大きく崩れてはないよ。',
+              subMessage: 'このまま流れを見ながら、ゆるく整えていけそうだね。',
+            ),
+            (
+              message: 'まだ安定してるね',
+              subMessage: '大きな乱れはないよ。このまま少しだけ意識していこう。',
+            ),
+            (
+              message: 'バランスいい感じだね',
+              subMessage: '今のところ大きな偏りはないよ。この流れキープしたいね。',
+            ),
+          ]);
+
+    return _MonthlyComment(
       scenarioKey: 'monthly_normal',
       notificationBody: '',
-      message: '今月は大きく崩れてはいません。',
-      subMessage: 'このまま流れを見ながら、ゆるく整えていけそうです。',
+      message: variant.message,
+      subMessage: variant.subMessage,
     );
   }
 
@@ -780,6 +1091,7 @@ class RoastService {
   }
 
   static _MonthlyComment _buildMonthlyComment({
+    required String languageCode,
     required double overallUsageRate,
     required int totalBudget,
     required List<Map<String, dynamic>> dangerCategories,
@@ -797,29 +1109,63 @@ class RoastService {
     required int suddenExpenseCount,
     required int suddenExpenseAmount,
   }) {
+    final lang = _normalizeLang(languageCode);
+    final isEn = _isEnglish(lang);
+
     if (overallUsageRate >= 1.0) {
-      final variant = _pickVariant('overall_over', [
-        (
-          message: '今月の予算、もう終わってます。',
-          subMessage: 'ここから先は、完全に未来の自分へのツケです。',
-        ),
-        (
-          message: '全体予算、使い切りました。',
-          subMessage: 'ここから先の支出は、すべて延長戦です。',
-        ),
-        (
-          message: '予算オーバーです。',
-          subMessage: '財布はすでに今月の役目を終えた顔をしています。',
-        ),
-        (
-          message: '今月の上限を突破しました。',
-          subMessage: '少しどころではなく、しっかり次月に影響しそうです。',
-        ),
-      ]);
+      final variant = _pickVariant('overall_over_$lang', isEn
+          ? [
+              (
+                message: 'You are over budget now',
+                subMessage:
+                    'This month’s limit is already used up. From here, every extra expense will echo into the next month.',
+              ),
+              (
+                message: 'The line has been crossed',
+                subMessage:
+                    'The budget is already past its limit. Not panic time, but definitely landing-carefully time.',
+              ),
+              (
+                message: 'This month is in overtime',
+                subMessage:
+                    'Budget-wise, the main game is over. Now it is all about how softly you can land.',
+              ),
+              (
+                message: 'Past the limit now',
+                subMessage:
+                    'The wallet is not yelling, but it is very much staring. Time to calm the pace down.',
+              ),
+            ]
+          : [
+              (
+                message: 'もうオーバーしてるね',
+                subMessage:
+                    '今月の予算は使い切ってるよ。ここからは来月に響きやすいゾーンだね。',
+              ),
+              (
+                message: '完全に越えてるね',
+                subMessage:
+                    'ここからの支出は、あとで効いてくるやつだよ。焦らず着地を考えたいね。',
+              ),
+              (
+                message: '今月、延長戦だね',
+                subMessage:
+                    '予算的にはもう本編終了。ここからはどうやわらかく着地させるかだね。',
+              ),
+              (
+                message: 'ライン超えてるね',
+                subMessage:
+                    '財布は叫んでないけど、かなり見てるよ。少しペースを落ち着かせたいところだね。',
+              ),
+            ]);
 
       return _MonthlyComment(
         scenarioKey: 'overall_over',
-        notificationBody: '今月の予算を使い切りました。',
+        notificationBody: _t(
+          lang,
+          '今月の予算を使い切ったよ。',
+          'You have used up this month’s budget.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -834,113 +1180,100 @@ class RoastService {
       final criticalUsageRate = criticalCategory['usageRate'] as double? ?? 0.0;
 
       if (criticalUsageRate >= 0.9) {
-        final variant = _pickVariant('category_danger', [
-          (
-            message: '$criticalBadge $criticalName、かなり攻めてます。',
-            subMessage: 'もう少しで上限です。次の一手は慎重にいきましょう。',
-          ),
-          (
-            message: '$criticalBadge $criticalName、かなりギリギリです。',
-            subMessage: 'ここから先は少し慎重なくらいでちょうどよさそうです。',
-          ),
-          (
-            message: '$criticalBadge $criticalName、だいぶ限界が近いです。',
-            subMessage: '今ならまだ持ち直せます。少しだけ抑えていきましょう。',
-          ),
-        ]);
+        final variant = _pickVariant('category_danger_$lang', isEn
+            ? [
+                (
+                  message: '$criticalBadge $criticalName is pushing the limit',
+                  subMessage: 'Almost at the cap. From here, every move carries weight.',
+                ),
+                (
+                  message: '$criticalBadge $criticalName is on the edge',
+                  subMessage: 'Very little room left. Each expense will hit harder now.',
+                ),
+                (
+                  message: '$criticalBadge $criticalName is nearly maxed out',
+                  subMessage: 'Still recoverable, but this is where things get tight.',
+                ),
+              ]
+            : [
+                (
+                  message: '$criticalBadge $criticalName、かなり攻めてるね',
+                  subMessage: 'もう少しで上限だね。ここからは慎重モードだよ。',
+                ),
+                (
+                  message: '$criticalBadge $criticalName、ギリギリだね',
+                  subMessage: 'ここから先は一回ずつ重いね。少し守りたいところだよ。',
+                ),
+                (
+                  message: '$criticalBadge $criticalName、限界近いね',
+                  subMessage: 'まだ止められるラインだね。少し落ち着かせたいところだよ。',
+                ),
+              ]);
 
         return _MonthlyComment(
           scenarioKey: 'category_danger',
-          notificationBody: '$criticalBadge $criticalName が90%を超えました。',
+          notificationBody: _t(
+            lang,
+            '$criticalBadge $criticalName が90%を超えたよ。',
+            '$criticalName has exceeded 90% of its budget.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
         );
       }
 
       if (criticalUsageRate >= 0.75) {
-        final variant = _pickVariant('category_warning', [
-          (
-            message: '$criticalBadge $criticalName、そろそろ危険です。',
-            subMessage: 'このカテゴリの積み重ねが効いてきています。今ならまだ引き返せます。',
-          ),
-          (
-            message: '$criticalBadge $criticalName、少しペースが速いです。',
-            subMessage: '直近の一件というより、このカテゴリ全体の積み重ねで上限が見えてきています。',
-          ),
-          (
-            message: '$criticalBadge $criticalName、じわじわ効いています。',
-            subMessage: 'このカテゴリの反復が効いてきています。ここで少し抑えると後半がかなり楽になります。',
-          ),
-        ]);
+        final variant = _pickVariant('category_warning_$lang', isEn
+            ? [
+                (
+                  message: '$criticalBadge $criticalName is getting close',
+                  subMessage: 'This category is starting to show weight. Still time to adjust.',
+                ),
+                (
+                  message: '$criticalBadge $criticalName is moving fast',
+                  subMessage: 'Not one big hit, but the buildup is becoming visible.',
+                ),
+                (
+                  message: '$criticalBadge $criticalName is kicking in',
+                  subMessage: 'Slowing down now could make the rest of the month much easier.',
+                ),
+              ]
+            : [
+                (
+                  message: '$criticalBadge $criticalName、そろそろ危ないね',
+                  subMessage: 'このカテゴリ、じわっと効いてきてるよ。今ならまだ調整できるよ。',
+                ),
+                (
+                  message: '$criticalBadge $criticalName、ペース早めだね',
+                  subMessage: '一回より積み重ねが見えてきたよ。上限が近づいてるよ。',
+                ),
+                (
+                  message: '$criticalBadge $criticalName、効いてきたね',
+                  subMessage: 'ここで少し抑えると、後半かなり楽になりそうだよ。',
+                ),
+              ]);
 
         return _MonthlyComment(
           scenarioKey: 'category_warning',
-          notificationBody: '$criticalBadge $criticalName が75%を超えました。',
+          notificationBody: _t(
+            lang,
+            '$criticalBadge $criticalName が75%を超えたよ。',
+            '$criticalName has exceeded 75% of its budget.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
         );
       }
     }
 
-    if (overallUsageRate >= 1.0) {
-      final variant = _pickVariant('overall_over', [
-        (
-          message: '今月の予算、もう終わってます。',
-          subMessage: 'ここから先は、完全に未来の自分へのツケです。',
-        ),
-        (
-          message: '全体予算、使い切りました。',
-          subMessage: 'ここから先の支出は、すべて延長戦です。',
-        ),
-        (
-          message: '予算オーバーです。',
-          subMessage: '財布はすでに今月の役目を終えた顔をしています。',
-        ),
-        (
-          message: '今月の上限を突破しました。',
-          subMessage: '少しどころではなく、しっかり次月に影響しそうです。',
-        ),
-      ]);
-
-      return _MonthlyComment(
-        scenarioKey: 'overall_over',
-        notificationBody: '今月の予算を使い切りました。',
-        message: variant.message,
-        subMessage: variant.subMessage,
-      );
-    }
-
-    if (overallUsageRate >= 0.9) {
-      final variant = _pickVariant('overall_danger', [
-        (
-          message: '財布の余命、かなり短いです。',
-          subMessage: '今月は節約モードに切り替えた方がよさそうです。',
-        ),
-        (
-          message: '全体予算、かなりギリギリです。',
-          subMessage: 'ここから先は、慎重なくらいでちょうどよさそうです。',
-        ),
-        (
-          message: '予算の終盤戦に入っています。',
-          subMessage: '残りの期間は少し守り重視でいきたいところです。',
-        ),
-        (
-          message: '全体的にかなり使っています。',
-          subMessage: '今のペースだと、油断した一回が大きく響きそうです。',
-        ),
-      ]);
-
-      return _MonthlyComment(
-        scenarioKey: 'overall_danger',
-        notificationBody: '全体予算が90%を超えました。',
-        message: variant.message,
-        subMessage: variant.subMessage,
-      );
-    }
 
     final cafeComment = _buildCategoryMonthlyComment(
-      baseKey: 'cafe',
-      notificationBody: '今月カフェ{count}回目です。',
+      baseKey: 'cafe_$lang',
+      notificationBody: _t(
+        lang,
+        '今月カフェ{count}回目だよ。',
+        'Cafe spending showed up {count} times this month.',
+      ),
       metrics: _buildMonthlyCategoryMetrics(
         count: cafeCount,
         amount: cafeCount * 500,
@@ -952,42 +1285,76 @@ class RoastService {
         dripMinCount: 7,
         dripMinRatio: 0.04,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        repeatVariants: [
-          (
-            message: '今月カフェ{count}回目です。',
-            subMessage: '回数もですが、予算の{percent}%を使っています。習慣としてしっかり残るタイプです。',
-          ),
-          (
-            message: 'カフェ、今月{count}回ですね。',
-            subMessage: '一杯ずつでも、予算比では{percent}%。じわじわ効いています。',
-          ),
-          (
-            message: 'カフェ率、今月はやや高めです。',
-            subMessage: 'ここまでで予算の{percent}%。気分転換が習慣寄りになっています。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: '今月カフェ{count}回目です。',
-            subMessage: '回数もですが、予算の{percent}%を使っています。習慣としてしっかり残るタイプです。',
-          ),
-          (
-            message: 'カフェ、今月{count}回ですね。',
-            subMessage: '一杯ずつでも、予算比では{percent}%。じわじわ効いています。',
-          ),
-          (
-            message: 'カフェ率、今月はやや高めです。',
-            subMessage: 'ここまでで予算の{percent}%。気分転換が習慣寄りになっています。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Cafes are showing up a lot',
+                  subMessage: '{count} visits and {percent}% of the budget. Small comfort is starting to count.',
+                ),
+                (
+                  message: 'Cafe habit forming',
+                  subMessage: '{count} visits so far. It is not loud, but it is definitely present.',
+                ),
+                (
+                  message: 'Cafe rhythm detected',
+                  subMessage: 'Already {percent}% of the budget. This is starting to look like a routine.',
+                ),
+              ]
+            : [
+                (
+                  message: 'カフェ、{count}回だね',
+                  subMessage: '予算の{percent}%まで来てるよ。小さな休憩も、ちゃんと積み上がってるね。',
+                ),
+                (
+                  message: 'カフェ習慣、できてきたね',
+                  subMessage: '{count}回で{percent}%。静かだけど、ちゃんと存在感あるよ。',
+                ),
+                (
+                  message: 'カフェ、流れできてるね',
+                  subMessage: 'ここまでで{percent}%。気づいたらルーティンっぽくなってきてるよ。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Cafes are quietly stacking up',
+                  subMessage: '{count} visits and {percent}% of the budget. Each one feels light, but the pattern is not.',
+                ),
+                (
+                  message: 'Cafe spending is dripping in',
+                  subMessage: 'It has reached {percent}% little by little. Quiet, but real.',
+                ),
+                (
+                  message: 'The cafe streak is not stopping',
+                  subMessage: '{count} visits. Small comforts are leaving a visible trail.',
+                ),
+              ]
+            : [
+                (
+                  message: 'カフェ、静かに積んでるね',
+                  subMessage: '{count}回で{percent}%。一回ずつは軽いけど、流れとしては見えてきたよ。',
+                ),
+                (
+                  message: 'カフェ、じわっと来てるね',
+                  subMessage: '少しずつで{percent}%まで来てるよ。静かだけど、ちゃんと効いてるね。',
+                ),
+                (
+                  message: 'カフェ、止まってないね',
+                  subMessage: '{count}回。小さな余白が、そのまま足あとになってるよ。',
+                ),
+              ],
       ),
     );
     if (cafeComment != null) return cafeComment;
 
     final convenienceComment = _buildCategoryMonthlyComment(
-      baseKey: 'convenience',
-      notificationBody: 'コンビニ{count}回目です。',
+      baseKey: 'convenience_$lang',
+      notificationBody: _t(
+        lang,
+        'コンビニ{count}回目だよ。',
+        'Convenience store spending showed up {count} times this month.',
+      ),
       metrics: _buildMonthlyCategoryMetrics(
         count: convenienceCount,
         amount: convenienceCount * 400,
@@ -999,42 +1366,76 @@ class RoastService {
         dripMinCount: 7,
         dripMinRatio: 0.04,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        repeatVariants: [
-          (
-            message: 'コンビニ{count}回目です。',
-            subMessage: '手軽さの積み重ねで、予算の{percent}%を使っています。',
-          ),
-          (
-            message: '今月コンビニ{count}回ですね。',
-            subMessage: '一回ずつは軽くても、予算比で見ると{percent}%。しっかり残っています。',
-          ),
-          (
-            message: 'コンビニ率、高めです。',
-            subMessage: '今月ここまでで予算の{percent}%。気軽さがそのまま数字に出ています。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: 'コンビニ{count}回目です。',
-            subMessage: '手軽さの積み重ねで、予算の{percent}%を使っています。',
-          ),
-          (
-            message: '今月コンビニ{count}回ですね。',
-            subMessage: '一回ずつは軽くても、予算比で見ると{percent}%。しっかり残っています。',
-          ),
-          (
-            message: 'コンビニ率、高めです。',
-            subMessage: '今月ここまでで予算の{percent}%。気軽さがそのまま数字に出ています。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Convenience stores are showing up a lot',
+                  subMessage: '{count} visits and {percent}% of the budget. Easy stops are starting to leave a mark.',
+                ),
+                (
+                  message: 'Convenience habit detected',
+                  subMessage: '{count} visits so far. Small trips, but the pattern is getting visible.',
+                ),
+                (
+                  message: 'Convenience store rhythm forming',
+                  subMessage: 'Already {percent}% of the budget. Quick stops are not so invisible anymore.',
+                ),
+              ]
+            : [
+                (
+                  message: 'コンビニ、{count}回だね',
+                  subMessage: '気軽だけど{percent}%まで来てるよ。小さく見えて、ちゃんと残るやつだね。',
+                ),
+                (
+                  message: 'コンビニ習慣、見えてきたね',
+                  subMessage: '{count}回で{percent}%。手軽さって、静かに積み上がるね。',
+                ),
+                (
+                  message: 'コンビニ、流れできてるね',
+                  subMessage: 'ここまでで{percent}%。ちょい寄りの積み重ね、見える形になってきたよ。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Convenience stores are quietly stacking up',
+                  subMessage: '{count} visits and {percent}% of the budget. Each one feels small, but the trail is real.',
+                ),
+                (
+                  message: 'Convenience spending is dripping in',
+                  subMessage: 'It has reached {percent}% little by little. Quiet, but definitely there.',
+                ),
+                (
+                  message: 'The convenience streak is not stopping',
+                  subMessage: '{count} visits. Quick stops are leaving a visible trail.',
+                ),
+              ]
+            : [
+                (
+                  message: 'コンビニ、静かに積んでるね',
+                  subMessage: '{count}回で{percent}%。一回ずつは軽いけど、流れとしては見えてきたよ。',
+                ),
+                (
+                  message: 'コンビニ、じわっと来てるね',
+                  subMessage: '少しずつで{percent}%まで来てるよ。軽いけど、ちゃんと効いてるね。',
+                ),
+                (
+                  message: 'コンビニ、止まってないね',
+                  subMessage: '{count}回。ちょい寄りの積み重ねが、そのまま足あとになってるよ。',
+                ),
+              ],
       ),
     );
     if (convenienceComment != null) return convenienceComment;
 
     final diningComment = _buildCategoryMonthlyComment(
-      baseKey: 'dining',
-      notificationBody: '外食{count}回目です。',
+      baseKey: 'dining_$lang',
+      notificationBody: _t(
+        lang,
+        '外食{count}回目だよ。',
+        'Dining out showed up {count} times this month.',
+      ),
       metrics: _buildMonthlyCategoryMetrics(
         count: diningCount,
         amount: diningCount * 1200,
@@ -1046,35 +1447,65 @@ class RoastService {
         dripMinCount: 5,
         dripMinRatio: 0.06,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        repeatVariants: [
-          (
-            message: '外食{count}回目です。',
-            subMessage: '満足感は高いですが、予算の{percent}%を使っています。しっかり効いています。',
-          ),
-          (
-            message: '今月、外食が{count}回あります。',
-            subMessage: '楽しさに対して、合計は予算比{percent}%。存在感が出てきています。',
-          ),
-          (
-            message: '外食ペース、やや高めです。',
-            subMessage: '今月ここまでで予算の{percent}%。後半の余裕を少し意識したいところです。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: '外食{count}回目です。',
-            subMessage: '満足感は高いですが、予算の{percent}%を使っています。しっかり効いています。',
-          ),
-          (
-            message: '今月、外食が{count}回あります。',
-            subMessage: '楽しさに対して、合計は予算比{percent}%。存在感が出てきています。',
-          ),
-          (
-            message: '外食ペース、やや高めです。',
-            subMessage: '今月ここまでで予算の{percent}%。後半の余裕を少し意識したいところです。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Eating out is showing up a lot',
+                  subMessage: '{count} times and {percent}% of the budget. Fun meals are starting to leave a mark.',
+                ),
+                (
+                  message: 'Dining habit forming',
+                  subMessage: '{count} times so far. Enjoyable, yes. Invisible, not anymore.',
+                ),
+                (
+                  message: 'Dining out rhythm detected',
+                  subMessage: 'Already {percent}% of the budget. The fun is real, and so is the footprint.',
+                ),
+              ]
+            : [
+                (
+                  message: '外食、{count}回だね',
+                  subMessage: '予算の{percent}%まで来てるよ。楽しい時間も、ちゃんと積み上がってるね。',
+                ),
+                (
+                  message: '外食習慣、見えてきたね',
+                  subMessage: '{count}回で{percent}%。楽しさのぶん、ちゃんと存在感あるよ。',
+                ),
+                (
+                  message: '外食、流れできてるね',
+                  subMessage: 'ここまでで{percent}%。後半の余裕は少し見ておきたいね。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Dining out is quietly stacking up',
+                  subMessage: '{count} times and {percent}% of the budget. Each meal feels worth it, but the pattern is visible.',
+                ),
+                (
+                  message: 'Eating out is dripping in',
+                  subMessage: 'It has reached {percent}% little by little. Good meals, real footprint.',
+                ),
+                (
+                  message: 'The dining streak is not stopping',
+                  subMessage: '{count} times. The good food trail is getting easier to see.',
+                ),
+              ]
+            : [
+                (
+                  message: '外食、じわっと来てるね',
+                  subMessage: '{count}回で{percent}%。一回ずつの満足感、ちゃんと効いてるね。',
+                ),
+                (
+                  message: '外食、回数で来てるね',
+                  subMessage: 'ここまでで{percent}%。積み重ねるとけっこう見えてくるね。',
+                ),
+                (
+                  message: '外食、止まってないね',
+                  subMessage: '{count}回。楽しい流れだけど、予算にもちゃんと足あと残ってるよ。',
+                ),
+              ],
       ),
     );
     if (diningComment != null) return diningComment;
@@ -1101,8 +1532,12 @@ class RoastService {
     );
 
     final onlineShoppingComment = _buildCategoryMonthlyComment(
-      baseKey: 'online_shopping',
-      notificationBody: 'ネットショッピングが今月{count}回、合計{amount}円あります。',
+      baseKey: 'online_shopping_$lang',
+      notificationBody: _t(
+        lang,
+        'ネットショッピングが今月{count}回、合計{amount}円あるよ。',
+        'Online shopping showed up {count} times this month, totaling {amount}.',
+      ),
       metrics: onlineShoppingMetrics,
       rule: const _MonthlyCategoryRule(
         heavyHitMaxCount: 2,
@@ -1114,60 +1549,113 @@ class RoastService {
         dripMinAverage: 800,
         dripMaxAverage: 1499,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        heavyHitVariants: [
-          (
-            message: 'ネットショッピング、回数は少ないですが一撃が重めです。',
-            subMessage: '今月は{count}回で合計{amount}円。1回あたり約{average}円で、予算の{percent}%を使っています。',
-          ),
-          (
-            message: '通販系、回数より金額の重さが目立っています。',
-            subMessage: '今月{count}回で{amount}円。少回数でも、予算比で見るとしっかり残るタイプです。',
-          ),
-          (
-            message: 'ネット購入、少ない回数でも存在感があります。',
-            subMessage: '今月ここまでで予算の{percent}%を使っています。気軽さより重みが前に出ています。',
-          ),
-        ],
-        repeatVariants: [
-          (
-            message: 'ネットショッピング、今月{count}回です。',
-            subMessage: '合計{amount}円、1回あたり約{average}円。予算の{percent}%を使っていて、もうちゃんと存在感があります。',
-          ),
-          (
-            message: '今月のネット購入は{count}回あります。',
-            subMessage: '合計{amount}円で、予算比では{percent}%。一回ごとの軽さに対して、全体はかなり素直です。',
-          ),
-          (
-            message: '通販系の支出、今月はやや多めです。',
-            subMessage: '今月ここまでで{amount}円。画面の中では一瞬でも、予算比で見るとしっかり残ります。',
-          ),
-          (
-            message: 'ネットでの買い物が今月{count}回あります。',
-            subMessage: '1回あたり約{average}円。便利さの積み重ねが、予算の{percent}%まで届いています。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: 'ネットショッピング、今月{count}回です。',
-            subMessage: '合計{amount}円、1回あたり約{average}円。予算の{percent}%を使っていて、じわじわ型としてはかなり残っています。',
-          ),
-          (
-            message: '今月のネット購入は{count}回あります。',
-            subMessage: '一回ごとは軽めでも、積み重ねで予算比{percent}%まで来ています。',
-          ),
-          (
-            message: '通販系の支出、今月は回数で効いています。',
-            subMessage: '少額寄りでも回数が多く、ここまでで{amount}円。便利さの反復が数字に出ています。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        heavyHitVariants: isEn
+            ? [
+                (
+                  message: 'Online shopping hit hard',
+                  subMessage: '{count} orders and {amount} total. Not many taps, but they carried real weight.',
+                ),
+                (
+                  message: 'The cart landed heavy',
+                  subMessage: '{count} orders for {amount}. A few clicks, a noticeable budget footprint.',
+                ),
+                (
+                  message: 'Online spending has presence',
+                  subMessage: 'Already {percent}% of the budget. The screen was quick, but the impact stayed.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ネット、一撃重めだね',
+                  subMessage: '今月{count}回で{amount}円だよ。回数は少なくても、予算の{percent}%まで来てるよ。',
+                ),
+                (
+                  message: '通販、重いやつ来たね',
+                  subMessage: '{count}回で{amount}円。少ないクリックでも、予算にはしっかり残るタイプだね。',
+                ),
+                (
+                  message: 'ネット購入、存在感あるね',
+                  subMessage: 'ここまでで予算の{percent}%だよ。気軽さより、今回は重さが出てるね。',
+                ),
+              ],
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Online shopping is showing up a lot',
+                  subMessage: '{count} orders and {amount} total. Convenience is starting to leave a clear trail.',
+                ),
+                (
+                  message: 'Online purchases are adding up',
+                  subMessage: '{count} orders for {amount}. Easy taps, not-so-invisible footprint.',
+                ),
+                (
+                  message: 'The cart has a rhythm now',
+                  subMessage: '{amount} so far. Fast on the screen, very real in the budget.',
+                ),
+                (
+                  message: 'Online spending is creeping in',
+                  subMessage: 'About {average} per order. It has climbed to {percent}% of the budget.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ネット、{count}回だね',
+                  subMessage: '合計{amount}円。予算の{percent}%まで来てて、ちゃんと存在感あるね。',
+                ),
+                (
+                  message: 'ネット購入、多めだね',
+                  subMessage: '{count}回で{amount}円。便利さの積み重ね、けっこう効いてるね。',
+                ),
+                (
+                  message: '通販、流れできてるね',
+                  subMessage: 'ここまでで{amount}円。画面では一瞬でも、予算にはちゃんと残るやつだね。',
+                ),
+                (
+                  message: 'ネット、じわっと来てるね',
+                  subMessage: '1回あたり約{average}円。積み重ねて予算の{percent}%まで届いてるよ。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Online orders are quietly stacking up',
+                  subMessage: '{count} orders and {amount} total. One order feels light, but the pattern is visible.',
+                ),
+                (
+                  message: 'Online shopping is dripping in',
+                  subMessage: 'Small orders have still reached {percent}% of the budget.',
+                ),
+                (
+                  message: 'The cart is not stopping',
+                  subMessage: '{count} orders for {amount}. Convenience is leaving footprints.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ネット、回数で来てるね',
+                  subMessage: '{count}回で{amount}円。じわじわ型だけど、けっこう残ってるね。',
+                ),
+                (
+                  message: 'ネット購入、止まってないね',
+                  subMessage: '一回ごとは軽めでも、予算の{percent}%まで来てるよ。',
+                ),
+                (
+                  message: '通販、積み上がってるね',
+                  subMessage: '{count}回で{amount}円。便利さの反復がそのまま出てるね。',
+                ),
+              ],
       ),
     );
     if (onlineShoppingComment != null) return onlineShoppingComment;
 
     final movieComment = _buildCategoryMonthlyComment(
-      baseKey: 'movie',
-      notificationBody: '映画の支出が今月{count}回、合計{amount}円あります。',
+      baseKey: 'movie_$lang',
+      notificationBody: _t(
+        lang,
+        '映画の支出が今月{count}回、合計{amount}円あるよ。',
+        'Movie spending showed up {count} times this month, totaling {amount}.',
+      ),
       metrics: movieMetrics,
       rule: const _MonthlyCategoryRule(
         heavyHitMaxCount: 1,
@@ -1179,42 +1667,105 @@ class RoastService {
         dripMinRatio: 0.05,
         dripMinAverage: 1000,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        heavyHitVariants: [
-          (
-            message: '映画、1回でもちょっと重ためでしたね。',
-            subMessage: '今月ここまでで{amount}円。1回で予算の{percent}%を使っていて、満足感と一緒に存在感も大きめです。',
-          ),
-          (
-            message: '映画系支出、回数より一撃の重さが目立っています。',
-            subMessage: '今回は1回で{amount}円。こういう支出は回数が少なくても、予算比で見ると印象に残ります。',
-          ),
-          (
-            message: '映画、少回数でもちゃんと効いています。',
-            subMessage: '今月は1回で予算の{percent}%を使っています。気分転換としては良いですが、重みはあります。',
-          ),
-        ],
-        repeatVariants: [
-          (
-            message: '映画、今月{count}回です。',
-            subMessage: '合計{amount}円、1回あたり約{average}円で、予算の{percent}%を使っています。楽しみとしては良いですが、ちゃんと残るタイプです。',
-          ),
-          (
-            message: '今月の映画は{count}回あります。',
-            subMessage: '一本ずつは良くても、合計{amount}円・予算比{percent}%になると存在感が出てきます。',
-          ),
-          (
-            message: '映画ペース、今月は少し高めです。',
-            subMessage: '今月ここまでで{amount}円。気分転換としては最高ですが、財布も本数まで覚えています。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        heavyHitVariants: isEn
+            ? [
+                (
+                  message: 'Movie spending hit hard',
+                  subMessage: '{count} movie expense and {amount} total. A good screen break, but a noticeable budget hit.',
+                ),
+                (
+                  message: 'That movie had weight',
+                  subMessage: '{amount} in one go. The ticket may be gone, but the budget remembers.',
+                ),
+                (
+                  message: 'Movie night left a footprint',
+                  subMessage: 'Already {percent}% of the budget. Good time, real impact.',
+                ),
+              ]
+            : [
+                (
+                  message: '映画、一撃重めだね',
+                  subMessage: '今月{count}回で{amount}円だよ。いい気分転換だけど、予算にはしっかり響いてるね。',
+                ),
+                (
+                  message: '映画、けっこう効いてるね',
+                  subMessage: '今回は{amount}円。チケットは消えても、予算にはちゃんと残るやつだね。',
+                ),
+                (
+                  message: '映画、存在感あるね',
+                  subMessage: '予算の{percent}%まで来てるよ。楽しい時間だけど、重さも少しあるね。',
+                ),
+              ],
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Movies are showing up',
+                  subMessage: '{count} movie expenses and {amount} total. Fun nights are starting to leave a mark.',
+                ),
+                (
+                  message: 'Movie habit forming',
+                  subMessage: '{count} times so far. Good entertainment, but not invisible anymore.',
+                ),
+                (
+                  message: 'Movie rhythm detected',
+                  subMessage: '{amount} so far. A nice escape, with a real budget footprint.',
+                ),
+              ]
+            : [
+                (
+                  message: '映画、{count}回だね',
+                  subMessage: '合計{amount}円。予算の{percent}%まで来てて、けっこう存在感あるね。',
+                ),
+                (
+                  message: '映画、多めだね',
+                  subMessage: '{count}回で{amount}円。楽しさのぶん、予算にもちゃんと残ってるね。',
+                ),
+                (
+                  message: '映画、流れできてるね',
+                  subMessage: 'ここまでで{amount}円。気分転換の支出も見える形になってきたね。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Movies are quietly stacking up',
+                  subMessage: '{count} movie expenses and {amount} total. Each one feels like a break, but the pattern is visible.',
+                ),
+                (
+                  message: 'Movie spending is dripping in',
+                  subMessage: 'It has reached {percent}% little by little. Good stories, real footprint.',
+                ),
+                (
+                  message: 'The movie streak is not stopping',
+                  subMessage: '{count} times. The screen time is leaving a visible trail.',
+                ),
+              ]
+            : [
+                (
+                  message: '映画、じわっと来てるね',
+                  subMessage: '{count}回で{amount}円。一本ずつは楽しいけど、流れとしては見えてきたよ。',
+                ),
+                (
+                  message: '映画、回数で来てるね',
+                  subMessage: 'ここまでで{percent}%。積み重なるとけっこう存在感出るね。',
+                ),
+                (
+                  message: '映画、止まってないね',
+                  subMessage: '{count}回。いい時間だけど、予算にもちゃんと足あと残ってるよ。',
+                ),
+              ],
       ),
     );
     if (movieComment != null) return movieComment;
 
     final karaokeComment = _buildCategoryMonthlyComment(
-      baseKey: 'karaoke',
-      notificationBody: 'カラオケの支出が今月{count}回、合計{amount}円あります。',
+      baseKey: 'karaoke_$lang',
+      notificationBody: _t(
+        lang,
+        'カラオケの支出が今月{count}回、合計{amount}円あるよ。',
+        'Karaoke spending showed up {count} times this month, totaling {amount}.',
+      ),
       metrics: karaokeMetrics,
       rule: const _MonthlyCategoryRule(
         repeatMinCount: 2,
@@ -1224,42 +1775,76 @@ class RoastService {
         dripMinAverage: 0,
         dripMaxAverage: 700,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        repeatVariants: [
-          (
-            message: 'カラオケ、今月{count}回です。',
-            subMessage: '合計{amount}円、1回あたり約{average}円で、予算の{percent}%を使っています。しっかり楽しんだぶん、財布もその熱量を感じています。',
-          ),
-          (
-            message: '今月のカラオケは{count}回あります。',
-            subMessage: '一回ずつの楽しさに対して、合計{amount}円・予算比{percent}%は意外と存在感があります。',
-          ),
-          (
-            message: '歌うペース、今月は少し高めです。',
-            subMessage: '今月ここまでで{amount}円。予算の{percent}%を使っていて、発散力も予算への反映も強めです。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: 'カラオケ、1回ごとは軽めでも回数で効いています。',
-            subMessage: '今月{count}回で合計{amount}円。1回あたり約{average}円の、じわじわ型です。予算比では{percent}%です。',
-          ),
-          (
-            message: 'カラオケ、少額反復タイプですね。',
-            subMessage: '1回ごとは軽くても、今月ここまでで{amount}円。予算の{percent}%まで来ると回数の力が出ています。',
-          ),
-          (
-            message: '歌うたびに少しずつ、ちゃんと効いています。',
-            subMessage: '今月{count}回、合計{amount}円。軽い出費の積み重ねとしては十分強めです。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Karaoke is showing up',
+                  subMessage: '{count} visits and {amount} total. Good stress relief, with a visible budget footprint.',
+                ),
+                (
+                  message: 'Karaoke habit forming',
+                  subMessage: '{count} times so far. The voice is free, but the room is not.',
+                ),
+                (
+                  message: 'Karaoke rhythm detected',
+                  subMessage: 'Already {percent}% of the budget. Fun release, real trail.',
+                ),
+              ]
+            : [
+                (
+                  message: 'カラオケ、{count}回だね',
+                  subMessage: '合計{amount}円。予算の{percent}%まで来てて、しっかり楽しんでるね。',
+                ),
+                (
+                  message: 'カラオケ習慣、見えてきたね',
+                  subMessage: '{count}回で{percent}%。声は無料でも、部屋代はちゃんと残るね。',
+                ),
+                (
+                  message: 'カラオケ、流れできてるね',
+                  subMessage: 'ここまでで{amount}円。発散はいいけど、予算にも足あと残ってるよ。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Karaoke is quietly stacking up',
+                  subMessage: '{count} visits and {amount} total. Each one feels light, but the pattern is visible.',
+                ),
+                (
+                  message: 'Karaoke spending is dripping in',
+                  subMessage: 'About {average} per visit. Small sessions still reached {percent}% of the budget.',
+                ),
+                (
+                  message: 'The karaoke streak is not stopping',
+                  subMessage: '{count} visits. The fun is leaving a trail, one song at a time.',
+                ),
+              ]
+            : [
+                (
+                  message: 'カラオケ、じわっと来てるね',
+                  subMessage: '{count}回で{amount}円。軽くても回数でちゃんと効いてるね。',
+                ),
+                (
+                  message: 'カラオケ、回数型だね',
+                  subMessage: '1回あたり約{average}円。積み重ねで{percent}%まで来てるよ。',
+                ),
+                (
+                  message: 'カラオケ、止まってないね',
+                  subMessage: '{count}回。楽しさの流れが、そのまま足あとになってるね。',
+                ),
+              ],
       ),
     );
     if (karaokeComment != null) return karaokeComment;
 
     final arcadeComment = _buildCategoryMonthlyComment(
-      baseKey: 'arcade',
-      notificationBody: 'ゲーセン系の支出が今月{count}回、合計{amount}円あります。',
+      baseKey: 'arcade_$lang',
+      notificationBody: _t(
+        lang,
+        'ゲーセン系の支出が今月{count}回、合計{amount}円あるよ。',
+        'Arcade spending showed up {count} times this month, totaling {amount}.',
+      ),
       metrics: arcadeMetrics,
       rule: const _MonthlyCategoryRule(
         heavyHitMaxCount: 2,
@@ -1270,35 +1855,94 @@ class RoastService {
         dripMinRatio: 0.035,
         dripMinAverage: 700,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        heavyHitVariants: [
-          (
-            message: '遊び系支出、回数より一撃の重さが出ています。',
-            subMessage: '今月{count}回で合計{amount}円。1回あたり約{average}円で、予算の{percent}%を使っています。',
-          ),
-          (
-            message: 'ゲームセンター系、少回数でも存在感があります。',
-            subMessage: '一回ごとの楽しさは大きいですが、予算比で見るとちゃんと大きめです。今月ここまでで{amount}円です。',
-          ),
-          (
-            message: '遊びの支出、今回は一撃重めでしたね。',
-            subMessage: '少ない回数でも予算の{percent}%まで来ると、かなり印象に残る使い方です。',
-          ),
-        ],
-        repeatVariants: [
-          (
-            message: 'ゲームセンター系の支出、今月{count}回です。',
-            subMessage: '合計{amount}円、1回あたり約{average}円で、予算の{percent}%を使っています。遊びとしては良いですが、積み重なるとしっかり効いてきます。',
-          ),
-          (
-            message: '今月のゲーセン系支出は{count}回あります。',
-            subMessage: 'その一回の楽しさに対して、合計{amount}円・予算比{percent}%はちゃんと存在感があります。',
-          ),
-          (
-            message: '遊びのペース、今月は少し高めです。',
-            subMessage: '今月ここまでで{amount}円。後半の余裕は少し意識したいところです。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        heavyHitVariants: isEn
+            ? [
+                (
+                  message: 'Arcade spending hit hard',
+                  subMessage: '{count} visits and {amount} total. Not frequent, but each hit carries weight.',
+                ),
+                (
+                  message: 'That play session had weight',
+                  subMessage: '{amount} in total. Fun, but clearly visible in the budget.',
+                ),
+                (
+                  message: 'Arcade time left a mark',
+                  subMessage: 'About {average} per visit. Not exactly light.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ゲーセン、一撃重めだね',
+                  subMessage: '今月{count}回で{amount}円。少ない回数でもしっかり残るタイプだね。',
+                ),
+                (
+                  message: '遊び、一発効いてるね',
+                  subMessage: '予算の{percent}%まで来てるよ。楽しさのぶん、ちゃんと効いてるね。',
+                ),
+                (
+                  message: 'ゲーセン、存在感あるね',
+                  subMessage: '1回あたり約{average}円。軽くはない一撃だね。',
+                ),
+              ],
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Arcades are showing up a lot',
+                  subMessage: '{count} visits and {amount} total. Fun stacking up into something visible.',
+                ),
+                (
+                  message: 'Arcade habit forming',
+                  subMessage: '{count} visits so far. Not just a one-off anymore.',
+                ),
+                (
+                  message: 'Arcade rhythm detected',
+                  subMessage: '{amount} so far. The playtime is leaving a clear footprint.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ゲーセン、{count}回だね',
+                  subMessage: '合計{amount}円。予算の{percent}%まで来てて、じわっと効いてるね。',
+                ),
+                (
+                  message: 'ゲーセン多めだね',
+                  subMessage: '{count}回で{amount}円。遊びの積み重ね、ちゃんと残ってるね。',
+                ),
+                (
+                  message: 'ゲーセン、流れできてるね',
+                  subMessage: 'ここまでで{amount}円。気づいたら効いてるタイプだね。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Arcade visits are quietly stacking up',
+                  subMessage: '{count} visits and {amount} total. Each play feels light, but the pattern is visible.',
+                ),
+                (
+                  message: 'Arcade spending is dripping in',
+                  subMessage: 'It has reached {percent}% little by little.',
+                ),
+                (
+                  message: 'The arcade streak is not stopping',
+                  subMessage: '{count} visits. Fun is leaving a trail.',
+                ),
+              ]
+            : [
+                (
+                  message: 'ゲーセン、じわっと来てるね',
+                  subMessage: '{count}回で{amount}円。軽くても回数でちゃんと効いてるね。',
+                ),
+                (
+                  message: 'ゲーセン、回数型だね',
+                  subMessage: '積み重ねで{percent}%まで来てるよ。',
+                ),
+                (
+                  message: 'ゲーセン、止まってないね',
+                  subMessage: '{count}回。楽しさの流れが、そのまま足あとになってるね。',
+                ),
+              ],
       ),
     );
     if (arcadeComment != null) return arcadeComment;
@@ -1310,8 +1954,12 @@ class RoastService {
     );
 
     final suddenComment = _buildCategoryMonthlyComment(
-      baseKey: 'sudden_expense',
-      notificationBody: '今月、急な出費が{count}回あります。',
+      baseKey: 'sudden_expense_$lang',
+      notificationBody: _t(
+        lang,
+        '今月、急な出費が{count}回あるよ。',
+        'Unexpected expenses showed up {count} times this month.',
+      ),
       metrics: suddenMetrics,
       rule: const _MonthlyCategoryRule(
         repeatMinCount: 3,
@@ -1320,44 +1968,75 @@ class RoastService {
         dripMinRatio: 0.05,
         dripMaxAverage: 1500,
       ),
-      copySet: const _MonthlyCategoryCopySet(
-        repeatVariants: [
-          (
-            message: '今月、急な出費が{count}回あります。',
-            subMessage: '予定外のお金で、予算の{percent}%を使っています。じわじわ効いています。',
-          ),
-          (
-            message: '急な出費、今月{count}回目です。',
-            subMessage: '単発に見えて、合計では予算の{percent}%。流れになりつつあります。',
-          ),
-          (
-            message: '今月は急な出費が多めですね。',
-            subMessage: 'ここまでで予算の{percent}%。想定外が積み重なっています。',
-          ),
-        ],
-        dripVariants: [
-          (
-            message: '急な出費、回数で効いています。',
-            subMessage: '今月{count}回で、予算の{percent}%。軽く見えて積み重なっています。',
-          ),
-          (
-            message: '予定外の出費が続いていますね。',
-            subMessage: '1回ごとは小さくても、合計ではしっかり残っています。',
-          ),
-          (
-            message: '急な出費、少額反復タイプです。',
-            subMessage: '気づきにくいですが、予算の{percent}%まで来ています。',
-          ),
-        ],
+      copySet: _MonthlyCategoryCopySet(
+        repeatVariants: isEn
+            ? [
+                (
+                  message: 'Unexpected costs are showing up',
+                  subMessage: '{count} times and already {percent}% of the budget. These are starting to add up.',
+                ),
+                (
+                  message: 'Unplanned spending is building',
+                  subMessage: '{count} hits so far. Each one looks small, but the pattern is real.',
+                ),
+                (
+                  message: 'Surprises are stacking up',
+                  subMessage: 'Already {percent}% of the budget. Unplanned does not mean invisible.',
+                ),
+              ]
+            : [
+                (
+                  message: '急な出費、{count}回だね',
+                  subMessage: '予定外で予算の{percent}%まで来てるよ。じわっと効いてるね。',
+                ),
+                (
+                  message: '急な出費、多めだね',
+                  subMessage: '{count}回で{percent}%。単発っぽく見えて、流れになってきてるね。',
+                ),
+                (
+                  message: '想定外、積み上がってるね',
+                  subMessage: 'ここまでで予算の{percent}%だよ。予定外って意外と残るね。',
+                ),
+              ],
+        dripVariants: isEn
+            ? [
+                (
+                  message: 'Unexpected expenses are quietly stacking up',
+                  subMessage: '{count} times and {percent}% of the budget. Each one feels minor, but together they are not.',
+                ),
+                (
+                  message: 'Unplanned spending is dripping in',
+                  subMessage: 'It has reached {percent}% little by little.',
+                ),
+                (
+                  message: 'The surprises are not stopping',
+                  subMessage: '{count} times. Small hits are leaving a real footprint.',
+                ),
+              ]
+            : [
+                (
+                  message: '急な出費、回数で来てるね',
+                  subMessage: '今月{count}回で予算の{percent}%。軽く見えても積み重なるね。',
+                ),
+                (
+                  message: '予定外、続いてるね',
+                  subMessage: '1回ごとは小さくても、財布にはちゃんと残ってるよ。',
+                ),
+                (
+                  message: '急な出費、じわっと来てるね',
+                  subMessage: '気づきにくいけど、予算の{percent}%まで来てるよ。',
+                ),
+              ],
       ),
     );
 
     if (suddenComment != null) return suddenComment;
 
-    return _defaultMonthlyComment();
+    return _defaultMonthlyComment(languageCode);
   }
 
   static Future<RoastResult> build({
+    String languageCode = 'ja',
     required int totalBudget,
     required int usedAmount,
     required List<Expense> expenses,
@@ -1368,60 +2047,112 @@ class RoastService {
     DateTime? cycleEnd,
     Map<ExpenseJudgeTag, int>? latestCategoryTagUsedAmounts,
   }) async {
+    final lang = _normalizeLang(languageCode);
+    final isEn = _isEnglish(lang);
     if (totalBudget == 0) {
-      final variant = _pickVariant('no_budget', [
-        (
-          message: 'まずは予算を決めましょう。',
-          subMessage: '予算がないと、財布の余命も測れません。',
-        ),
-        (
-          message: '今月の予算がまだ未設定です。',
-          subMessage: '最初に上限を決めるだけで、かなり見え方が変わります。',
-        ),
-        (
-          message: '予算、まだ空欄ですね。',
-          subMessage: '財布も、とりあえずの目安を待っています。',
-        ),
-        (
-          message: '予算を先に決めておくのがおすすめです。',
-          subMessage: '基準があるだけで、使いすぎに気づきやすくなります。',
-        ),
-      ]);
+      final variant = _pickVariant('no_budget_$lang', isEn
+          ? [
+              (
+                message: 'No budget set yet',
+                subMessage:
+                    'Your wallet is basically walking around without a map. Set a rough limit and things get much easier to read.',
+              ),
+              (
+                message: 'No guardrails yet',
+                subMessage:
+                    'Without a line in the sand, every expense gets a little too mysterious.',
+              ),
+              (
+                message: 'Your budget is still blank',
+                subMessage:
+                    'Even a rough monthly limit gives your money somewhere to stand.',
+              ),
+              (
+                message: 'The wallet has no mission yet',
+                subMessage:
+                    'Give it a monthly limit and it can finally start judging things properly.',
+              ),
+            ]
+          : [
+              (
+                message: '予算、まだないね',
+                subMessage: '上限がないと、どこまでいくか分からないよ。まずはざっくりで大丈夫。',
+              ),
+              (
+                message: '今月、ノーガードだね',
+                subMessage: '基準がないままだと、気づいた時にはけっこう来てるやつだよ。',
+              ),
+              (
+                message: '予算、空欄のままだね',
+                subMessage: 'とりあえずでもいいから、線を引いておくとかなり楽になるよ。',
+              ),
+              (
+                message: '上限、決めとくといいかもね',
+                subMessage: 'あるだけで、お金の動きがかなり見えやすくなるよ。',
+              ),
+            ]);
 
       return RoastResult(
-        title: '財布からひとこと',
+        title: _noteTitle(lang),
         message: variant.message,
         subMessage: variant.subMessage,
-        notificationBody: 'まずは予算を設定しましょう。',
+        notificationBody: _t(lang, 'まずは予算を設定しよう。', 'Set a budget first.'),
         scenarioKey: 'no_budget',
       );
     }
 
     if (expenses.isEmpty) {
-      final variant = _pickVariant('no_expense', [
-        (
-          message: 'まだ支出がありません。優秀です。',
-          subMessage: 'このままなら、財布はかなり長生きしそうです。',
-        ),
-        (
-          message: '今のところ支出はゼロです。',
-          subMessage: '静かなスタートです。この調子でいきましょう。',
-        ),
-        (
-          message: 'まだ何も使っていませんね。',
-          subMessage: '財布も落ち着いています。かなり平和です。',
-        ),
-        (
-          message: '支出記録はまだありません。',
-          subMessage: '出だしとしてはかなり好調です。',
-        ),
-      ]);
+      final variant = _pickVariant('no_expense_$lang', isEn
+          ? [
+              (
+                message: 'No spending yet',
+                subMessage:
+                    'Quiet start. The wallet is still relaxing, which is honestly a pretty good opening move.',
+              ),
+              (
+                message: 'Still at zero',
+                subMessage:
+                    'Nothing has moved yet. That is the kind of calm budgets dream about.',
+              ),
+              (
+                message: 'No activity so far',
+                subMessage:
+                    'Suspiciously peaceful. Let’s keep an eye on it, in a good way.',
+              ),
+              (
+                message: 'Nothing spent yet',
+                subMessage:
+                    'A clean start. Future you might appreciate this quiet little moment.',
+              ),
+            ]
+          : [
+              (
+                message: 'まだ使ってないね',
+                subMessage: 'かなり静かだね。このままなら余裕あるね。',
+              ),
+              (
+                message: '今のところゼロだね',
+                subMessage: 'いい入り方してるね。まだ全然減ってないね。',
+              ),
+              (
+                message: '動き、まだないね',
+                subMessage: 'かなり落ち着いてる。この感じ、なかなかいいね。',
+              ),
+              (
+                message: 'まだ何も来てないね',
+                subMessage: 'ここからどう使うかで流れが変わるね。いいスタートだよ。',
+              ),
+            ]);
 
       return RoastResult(
-        title: '財布からひとこと',
+        title: _noteTitle(lang),
         message: variant.message,
         subMessage: variant.subMessage,
-        notificationBody: 'まだ支出がありません。かなり優秀です。',
+        notificationBody: _t(
+          lang,
+          'まだ支出はないね。いいスタートだよ。',
+          'No spending yet. Nice start.',
+        ),
         scenarioKey: 'no_expense',
       );
     }
@@ -1527,15 +2258,6 @@ class RoastService {
           )
         : null;
 
-        
-    final aiResult = judge.shouldAskAi
-        ? await UnknownExpenseAiService.classify(
-            storeName: latestExpense.storeName,
-            category: latestExpense.category,
-            amount: latestExpense.amount,
-            spentAt: latestExpense.createdAt,
-          )
-        : null;
 
 
 
@@ -1557,6 +2279,7 @@ class RoastService {
     final latestStoreCount = latestStore.isEmpty ? 0 : (storeCounts[latestStore] ?? 0);
 
     final priorityLatestComment = _buildPriorityLatestComment(
+      languageCode: lang,
       convenienceCount: convenienceCount,
       cafeCount: cafeCount,
       diningCount: diningCount,
@@ -1618,68 +2341,130 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     String? leadSubMessage;
 
     if (spendingRate >= 0.25) {
-      final variant = _pickVariant('expensive_spending', [
-        (
-          message: '今回の支出は${latestExpense.category}の${latestExpense.storeName}で$amount円です。',
-          subMessage: '一回の支出としてはかなり大きめです。財布が少し震えています。',
-        ),
-        (
-          message: '今回は${latestExpense.category}の${latestExpense.storeName}で$amount円。なかなか大きいですね。',
-          subMessage: '今月の予算に対して見ると、かなり存在感のある一撃です。',
-        ),
-        (
-          message: '今回は${latestExpense.category}で$amount円の支出を確認しました。',
-          subMessage: '${latestExpense.storeName}、今日はちょっと豪華でしたね。',
-        ),
-        (
-          message: '${latestExpense.category}の${latestExpense.storeName}での出費、かなりインパクトがあります。',
-          subMessage: '一回でここまで動くと、財布もさすがに気づきます。',
-        ),
-      ]);
+      final moneyText = _formatMoney(amount, lang);
+      final variant = _pickVariant('expensive_spending_$lang', isEn
+          ? [
+              (
+                message: 'That was a big one',
+                subMessage: '${latestExpense.storeName} just hit hard. The wallet definitely felt that.',
+              ),
+              (
+                message: 'Heavy spending there',
+                subMessage: '$moneyText. Even as a one-off, that carries weight.',
+              ),
+              (
+                message: '${latestExpense.storeName} came in strong',
+                subMessage: 'A single move like this leaves a clear footprint.',
+              ),
+              (
+                message: 'That was a solid hit',
+                subMessage: '$moneyText. This could shift the flow of the month a bit.',
+              ),
+            ]
+          : [
+              (
+                message: '$moneyText、でかいね',
+                subMessage: '${latestExpense.storeName}の一撃だよ。財布、ちょっと揺れてるね。',
+              ),
+              (
+                message: 'これは重いね',
+                subMessage: '$moneyText。単発でもけっこう効くやつだね。',
+              ),
+              (
+                message: '${latestExpense.storeName}、強めだね',
+                subMessage: '一回でここまで動くと、さすがに存在感あるね。',
+              ),
+              (
+                message: '一撃、来たね',
+                subMessage: '$moneyText。今月の流れ、ちょっと変わりそうだね。',
+              ),
+            ]);
 
       leadMessage = variant.message;
       leadSubMessage = variant.subMessage;
     } else if (spendingRate >= 0.15) {
-      final variant = _pickVariant('mid_spending', [
-        (
-          message: '今回の支出は${latestExpense.category}の${latestExpense.storeName}で$amount円です。',
-          subMessage: '設定予算に対して見ると、じわじわ効いてくるタイプの出費です。',
-        ),
-        (
-          message: '今回は${latestExpense.category}の${latestExpense.storeName}で$amount円。少し大きめですね。',
-          subMessage: '一回ごとの重さが、あとで効いてきそうです。',
-        ),
-        (
-          message: '今回は${latestExpense.category}で$amount円の支出を記録しました。',
-          subMessage: '小さすぎない出費なので、少しだけ意識していきたいところです。',
-        ),
-        (
-          message: '${latestExpense.category}の${latestExpense.storeName}、今回の支出はやや存在感があります。',
-          subMessage: '予算全体から見ると、油断できないサイズです。',
-        ),
-      ]);
+      final moneyText = _formatMoney(amount, lang);
+
+      final variant = _pickVariant('mid_spending_$lang', isEn
+          ? [
+              (
+                message: '$moneyText, not small',
+                subMessage: '${latestExpense.storeName} has some weight. This may linger a bit.',
+              ),
+              (
+                message: 'That one will stick',
+                subMessage: '$moneyText is not huge, but it is not invisible either.',
+              ),
+              (
+                message: '${latestExpense.storeName} has presence',
+                subMessage: '$moneyText. It feels fine now, but it may show up later.',
+              ),
+              (
+                message: 'A quiet hit there',
+                subMessage: '$moneyText. Small enough to miss, big enough to matter.',
+              ),
+            ]
+          : [
+              (
+                message: '$moneyText、ちょい重めだね',
+                subMessage: '${latestExpense.storeName}の支出だよ。あとでじわっと効きそうだね。',
+              ),
+              (
+                message: 'これは少し効くね',
+                subMessage: '$moneyText。小さくはないから、財布も見逃してないよ。',
+              ),
+              (
+                message: '${latestExpense.storeName}、存在感あるね',
+                subMessage: '今回の$moneyText、あとで効いてくるタイプかもね。',
+              ),
+              (
+                message: 'じわっと来るやつだね',
+                subMessage: '$moneyText。今は平気でも、積み重なると効いてくるよ。',
+              ),
+            ]);
 
       leadMessage = variant.message;
       leadSubMessage = variant.subMessage;
     } else if (spendingRate >= 0.08) {
-      final variant = _pickVariant('light_high_spending', [
-        (
-          message: '今回の支出は${latestExpense.category}の${latestExpense.storeName}で$amount円です。',
-          subMessage: '一回としては少し重めです。じわじわ効いてくるタイプです。',
-        ),
-        (
-          message: '今回は${latestExpense.category}の${latestExpense.storeName}で$amount円。ちょっと存在感あります。',
-          subMessage: 'まだ問題ないですが、積み重なるとしっかり効いてきます。',
-        ),
-        (
-          message: '今回は${latestExpense.category}で$amount円の支出を確認しました。',
-          subMessage: '軽くはない金額なので、少しだけ意識しておきたいところです。',
-        ),
-        (
-          message: '今回は${latestExpense.category}の${latestExpense.storeName}ですね。',
-          subMessage: 'このくらいの出費が続くと、あとで効いてくるタイプです。',
-        ),
-      ]);
+      final moneyText = _formatMoney(amount, lang);
+
+      final variant = _pickVariant('light_high_spending_$lang', isEn
+          ? [
+              (
+                message: '$moneyText stands out a bit',
+                subMessage: '${latestExpense.storeName} is not a major hit, but it is worth noticing.',
+              ),
+              (
+                message: 'A little presence there',
+                subMessage: '$moneyText. Still okay, but repeated moves like this can add up.',
+              ),
+              (
+                message: '${latestExpense.storeName} is not tiny',
+                subMessage: '$moneyText is the kind of expense worth remembering.',
+              ),
+              (
+                message: 'This one may add up later',
+                subMessage: '$moneyText. If this size keeps repeating, it will start to matter.',
+              ),
+            ]
+          : [
+              (
+                message: '$moneyText、少し目立つね',
+                subMessage: '${latestExpense.storeName}の支出だよ。じわっと効いてくるタイプだね。',
+              ),
+              (
+                message: 'ちょっと存在感あるね',
+                subMessage: '$moneyText。まだ大丈夫だけど、積み重なると効いてくるよ。',
+              ),
+              (
+                message: '${latestExpense.storeName}、軽くはないね',
+                subMessage: '今回の$moneyText、少しだけ覚えておきたいやつだね。',
+              ),
+              (
+                message: 'じわっと来そうだね',
+                subMessage: '$moneyText。このくらいが続くと、あとで効いてくるよ。',
+              ),
+            ]);
 
       leadMessage = variant.message;
       leadSubMessage = variant.subMessage;
@@ -1691,100 +2476,175 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     if ((secondaryMessage == null || secondaryMessage.isEmpty) &&
         hasConsecutiveStoreSpending &&
         latestStore.isNotEmpty) {
-      final variant = _pickVariant('secondary_consecutive_store_$latestStore', [
-        (
-          message: '$latestStoreが$consecutiveStoreCount回連続ですね。',
-          subMessage: 'もう常連です。レシートの顔パス、通りそうです。',
-        ),
-        (
-          message: 'また$latestStoreですね。',
-          subMessage: 'ここまで来ると偶然じゃないです。好みが強いです。',
-        ),
-        (
-          message: '$latestStore、連続記録更新中です。',
-          subMessage: '財布はカウント係、あなたはリピーターです。役割分担できてます。',
-        ),
-      ]);
+      final variant = _pickVariant('secondary_consecutive_store_${latestStore}_$lang', isEn
+          ? [
+              (
+                message: '$latestStore again',
+                subMessage: '$consecutiveStoreCount times in a row. This is becoming a pattern.',
+              ),
+              (
+                message: '$latestStore streak going',
+                subMessage: '$consecutiveStoreCount visits straight. Even the wallet remembers now.',
+              ),
+              (
+                message: '$latestStore is not stopping',
+                subMessage: 'At this point, it is more habit than coincidence.',
+              ),
+            ]
+          : [
+              (
+                message: '$latestStore、連続だね',
+                subMessage: '$consecutiveStoreCount回続いてるよ。もうレシートも見覚えあるね。',
+              ),
+              (
+                message: 'また$latestStoreだね',
+                subMessage: 'ここまで来ると、偶然じゃなくて流れだね。'
+              ),
+              (
+                message: '$latestStore、止まってないね',
+                subMessage: '$consecutiveStoreCount回連続。財布もカウント係になってるよ。',
+              ),
+            ]);
       secondaryMessage = variant.message;
       secondarySubMessage = variant.subMessage;
     }
 
     if ((secondaryMessage == null || secondaryMessage.isEmpty) &&
         consecutiveCafeCount >= 2) {
-      final variant = _pickVariant('secondary_consecutive_cafe', [
-        (
-          message: 'カフェ、$consecutiveCafeCount連続ですね。',
-          subMessage: 'カフェインよりも習慣が効いてます。',
-        ),
-        (
-          message: 'またカフェですね。これで$consecutiveCafeCount連続です。',
-          subMessage: '気分転換が、もはや定常運転です。',
-        ),
-        (
-          message: 'カフェ連続記録、更新中です。',
-          subMessage: 'ポイントカードと友情が芽生えそうです。',
-        ),
-      ]);
+      final variant = _pickVariant('secondary_consecutive_cafe_$lang', isEn
+          ? [
+              (
+                message: 'Cafe streak going',
+                subMessage: '$consecutiveCafeCount times in a row. This is becoming a routine.',
+              ),
+              (
+                message: 'Another cafe stop',
+                subMessage: 'This is less a break, more a pattern now.',
+              ),
+              (
+                message: 'Cafes are not stopping',
+                subMessage: '$consecutiveCafeCount in a row. Habit is taking over.',
+              ),
+            ]
+          : [
+              (
+                message: 'カフェ、連続だね',
+                subMessage: '$consecutiveCafeCount回続いてるよ。カフェインより習慣が効いてるね。',
+              ),
+              (
+                message: 'またカフェだね',
+                subMessage: '気分転換が、ほぼ定常運転になってるね。',
+              ),
+              (
+                message: 'カフェ、止まってないね',
+                subMessage: '$consecutiveCafeCount回連続。ポイントカードと仲良くなりそうだね。',
+              ),
+            ]);
       secondaryMessage = variant.message;
       secondarySubMessage = variant.subMessage;
     }
 
     if ((secondaryMessage == null || secondaryMessage.isEmpty) &&
         consecutiveConvenienceCount >= 2) {
-      final variant = _pickVariant('secondary_consecutive_convenience', [
-        (
-          message: 'コンビニ、$consecutiveConvenienceCount連続ですね。',
-          subMessage: '“ちょっとだけ”が綺麗に積み上がっています。',
-        ),
-        (
-          message: 'またコンビニですね。これで$consecutiveConvenienceCount連続です。',
-          subMessage: '近さが勝ち続けています。財布は負け続けています。',
-        ),
-        (
-          message: 'コンビニ連続記録、更新中です。',
-          subMessage: '手軽さの勝利。予算の敗北。',
-        ),
-      ]);
+      final variant = _pickVariant('secondary_consecutive_convenience_$lang', isEn
+          ? [
+              (
+                message: 'Convenience streak going',
+                subMessage: 'Those quick stops are stacking up now.',
+              ),
+              (
+                message: 'Another convenience stop',
+                subMessage: 'Easy wins are quietly adding up.',
+              ),
+              (
+                message: 'Convenience visits not stopping',
+                subMessage: 'Small trips, real impact.',
+              ),
+            ]
+          : [
+              (
+                message: 'コンビニ、連続だね',
+                subMessage: '“ちょっとだけ”がちゃんと積み上がってるね。',
+              ),
+              (
+                message: 'またコンビニだね',
+                subMessage: '近さが勝ってるね。財布はちょっと押され気味だよ。',
+              ),
+              (
+                message: 'コンビニ、止まってないね',
+                subMessage: '手軽さの勝利だね。予算はじわっと削られてるよ。',
+              ),
+            ]);
       secondaryMessage = variant.message;
       secondarySubMessage = variant.subMessage;
     }
 
     if ((secondaryMessage == null || secondaryMessage.isEmpty) &&
         consecutiveDiningCount >= 2) {
-      final variant = _pickVariant('secondary_consecutive_dining', [
-        (
-          message: '外食、$consecutiveDiningCount連続ですね。',
-          subMessage: '満足度は高いです。残高は低くなります。',
-        ),
-        (
-          message: 'また外食ですね。これで$consecutiveDiningCount連続です。',
-          subMessage: '自炊は今、静かに休暇中です。',
-        ),
-        (
-          message: '外食連続記録、更新中です。',
-          subMessage: '美味しさと引き換えに、後半の余裕を前借りしています。',
-        ),
-      ]);
+      final variant = _pickVariant('secondary_consecutive_dining_$lang', isEn
+          ? [
+              (
+                message: 'Dining streak going',
+                subMessage: '$consecutiveDiningCount times in a row. Great meals, but the pattern is real.',
+              ),
+              (
+                message: 'Another meal out',
+                subMessage: 'Cooking is taking a quiet break now.',
+              ),
+              (
+                message: 'Eating out is not stopping',
+                subMessage: '$consecutiveDiningCount in a row. Good taste, visible footprint.',
+              ),
+            ]
+          : [
+              (
+                message: '外食、連続だね',
+                subMessage: '満足度は高いね。財布はちょっと低姿勢だよ。',
+              ),
+              (
+                message: 'また外食だね',
+                subMessage: '自炊は今、静かに休暇中だね。',
+              ),
+              (
+                message: '外食、止まってないね',
+                subMessage: '美味しさの勝利だね。後半の余裕は少し前借り気味だよ。',
+              ),
+            ]);
       secondaryMessage = variant.message;
       secondarySubMessage = variant.subMessage;
     }
 
     if ((secondaryMessage == null || secondaryMessage.isEmpty) &&
         consecutiveOnlineShoppingCount >= 2) {
-      final variant = _pickVariant('secondary_consecutive_online_shopping', [
-        (
-          message: 'ネットショッピング、$consecutiveOnlineShoppingCount連続ですね。',
-          subMessage: '気づいたら届くタイプの流れになっています。',
-        ),
-        (
-          message: 'またネットで買っていますね。これで$consecutiveOnlineShoppingCount連続です。',
-          subMessage: '指先の軽さに対して、財布の減りはしっかりしています。',
-        ),
-        (
-          message: 'ネットショッピング連続記録、更新中です。',
-          subMessage: '便利さの裏で、予算は静かに削られています。',
-        ),
-      ]);
+      final variant = _pickVariant('secondary_consecutive_online_shopping_$lang', isEn
+          ? [
+              (
+                message: 'Online orders again',
+                subMessage: 'Things keep arriving. This is becoming a flow.',
+              ),
+              (
+                message: 'Another quick order',
+                subMessage: 'Fingertips are light. The budget feels it though.',
+              ),
+              (
+                message: 'Online shopping not stopping',
+                subMessage: 'Convenience is winning. The footprint is real.',
+              ),
+            ]
+          : [
+              (
+                message: 'ネット、連続だね',
+                subMessage: '気づいたら届く流れになってるね。',
+              ),
+              (
+                message: 'またポチったね',
+                subMessage: '指先は軽いね。財布の減りはしっかり重いよ。',
+              ),
+              (
+                message: 'ネット、止まってないね',
+                subMessage: '便利さの勝利だね。予算は静かに削られてるよ。',
+              ),
+            ]);
       secondaryMessage = variant.message;
       secondarySubMessage = variant.subMessage;
     }
@@ -1794,44 +2654,77 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
         daysLeft != null &&
         daysLeft > 0 &&
         remainingBudget > 0) {
+      final remainingText = _formatMoney(remainingBudget, lang);
+
       if (remainingPerDay <= 150) {
-        final variant = _pickVariant('secondary_remaining_per_day_critical', [
-          (
-            message: '残り$daysLeft日で$remainingBudget円です。',
-            subMessage: '1日あたりかなりハードモードです。ほぼ修行です。',
-          ),
-          (
-            message: 'あと$daysLeft日、残り$remainingBudget円ですね。',
-            subMessage: '一回の判断が、ほぼストーリー分岐です。慎重にどうぞ。',
-          ),
-          (
-            message: '残り$remainingBudget円で、あと$daysLeft日です。',
-            subMessage: '財布は耐久戦に入りました。無駄撃ちは致命傷です。',
-          ),
-        ]);
+        final variant = _pickVariant('secondary_remaining_per_day_critical_$lang', isEn
+            ? [
+                (
+                  message: 'Running thin now',
+                  subMessage: 'About $remainingText left for $daysLeft days. This is basically hard mode.',
+                ),
+                (
+                  message: 'Decision point unlocked',
+                  subMessage: 'From here, each expense feels like a story branch.',
+                ),
+                (
+                  message: 'Survival mode started',
+                  subMessage: '$remainingText left and $daysLeft days to go. Random shots will hurt now.',
+                ),
+              ]
+            : [
+                (
+                  message: '残り、かなり薄いね',
+                  subMessage: '1日あたりハードモードだよ。ほぼ修行だね。',
+                ),
+                (
+                  message: 'ここから分岐だね',
+                  subMessage: '一回の判断が、ほぼストーリー分岐になってるよ。',
+                ),
+                (
+                  message: '耐久戦に入ったよ',
+                  subMessage: '残り$remainingTextであと$daysLeft日。無駄撃ちはけっこう痛いね。',
+                ),
+              ]);
         secondaryMessage = variant.message;
         secondarySubMessage = variant.subMessage;
       } else if (remainingPerDay <= 300) {
-        final variant = _pickVariant('secondary_remaining_per_day_warning', [
-          (
-            message: '残り$daysLeft日で$remainingBudget円です。',
-            subMessage: 'まだ戦えます。ただし雑に使うと一瞬で終わります。',
-          ),
-          (
-            message: 'あと$daysLeft日、残り$remainingBudget円ですね。',
-            subMessage: 'ここからが腕の見せ所。計画性に課金していきましょう。',
-          ),
-          (
-            message: '残り$remainingBudget円で、あと$daysLeft日です。',
-            subMessage: '軽い一手の連打で、終盤が重くなります。配分ゲーです。',
-          ),
-        ]);
+        final variant = _pickVariant('secondary_remaining_per_day_warning_$lang', isEn
+            ? [
+                (
+                  message: 'Still in the fight',
+                  subMessage: 'Use it loosely and it can disappear fast.',
+                ),
+                (
+                  message: 'This is where pacing matters',
+                  subMessage: 'From here, it is a distribution game. Planning would be a premium skill.',
+                ),
+                (
+                  message: 'The endgame is getting heavier',
+                  subMessage: 'A few light moves in a row can make the landing rough.',
+                ),
+              ]
+            : [
+                (
+                  message: 'まだ戦えるね',
+                  subMessage: 'ただし雑に使うと一瞬で終わるやつだよ。',
+                ),
+                (
+                  message: '腕の見せ所だね',
+                  subMessage: 'ここからは配分ゲーだよ。計画性に課金したいところだね。',
+                ),
+                (
+                  message: '終盤、重くなってきたね',
+                  subMessage: '軽い一手の連打で、あとが重くなるよ。',
+                ),
+              ]);
         secondaryMessage = variant.message;
         secondarySubMessage = variant.subMessage;
       }
     }
 
     final monthlyComment = _buildMonthlyComment(
+      languageCode: lang,
       overallUsageRate: overallUsageRate,
       totalBudget: totalBudget,
       dangerCategories: dangerCategories,
@@ -1864,78 +2757,181 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     if (judge.tags.contains(ExpenseJudgeTag.supermarket)) {
       if (overallUsageRate >= 1.0) {
-        final variant = _pickVariant('latest_supermarket_overall_over', [
-          (
-            message: '${latestExpense.storeName}での買い物を記録しました。',
-            subMessage: '生活に必要な買い物でも、全体ではすでに予算オーバーです。今回は静観より、現実を直視するターンです。',
-          ),
-          (
-            message: '${latestExpense.storeName}ですね。',
-            subMessage: '必要な支出のこともありますが、今月全体ではもう上限を越えています。これ以上は追加ラウンドです。',
-          ),
-          (
-            message: 'スーパーでの支出を確認しました。',
-            subMessage: '食費として自然でも、全体予算はもう終わっています。ここから先はかなり慎重に見たいところです。',
-          ),
-        ]);
+        final variant = _pickVariant(
+          'latest_supermarket_overall_over_$lang',
+          isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} is essentials',
+                    subMessage: 'Food matters. But the overall budget is already over this month.',
+                  ),
+                  (
+                    message: 'Groceries came in',
+                    subMessage: 'Necessary spend, but this is extra innings now for the month.',
+                  ),
+                  (
+                    message: 'Food is unavoidable',
+                    subMessage: 'True, but the overall budget has already been pushed past the limit.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、必要枠だね',
+                    subMessage: '食べるのは大事だよ。ただ、今月全体はもうオーバーしてるね。',
+                  ),
+                  (
+                    message: 'スーパー、来たね',
+                    subMessage: '必要な支出でも、今月は追加ラウンドだね。財布は延長戦に入ってるよ。',
+                  ),
+                  (
+                    message: '食費、避けられないね',
+                    subMessage: '生活には必要だよ。ただ、全体予算はもう限界突破してるね。',
+                  ),
+                ],
+        );
 
         latestComment = _LatestComment(
-          scenarioKey: 'latest_supermarket_overall_over',
-          notificationBody: '🛒 ${latestExpense.storeName} の支出を記録しました。今月全体はすでに予算オーバーです。',
+          scenarioKey: 'latest_supermarket_overall_over_$lang',
+          notificationBody: _t(
+            lang,
+            '🛒 ${latestExpense.storeName} の支出を記録したよ。今月全体はすでに予算オーバーだね。',
+            '🛒 ${latestExpense.storeName} logged. The overall budget is already over this month.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
         );
       } else if (ruleResult?.paceStatus == PaceStatus.danger ||
           ruleResult?.paceStatus == PaceStatus.over) {
-        final variant = _pickVariant('latest_supermarket_category_danger', [
-          (
-            message: '${latestExpense.storeName}での買い物を記録しました。',
-            subMessage: '生活に必要な買い物でも、このカテゴリ予算の進み方としてはかなり厳しめです。静かに見守る段階は過ぎています。',
-          ),
-          (
-            message: '${latestExpense.storeName}ですね。',
-            subMessage: '必要な支出のこともありますが、カテゴリ予算はかなりギリギリです。ここからは少し慎重にいきたいところです。',
-          ),
-          (
-            message: 'スーパーでの支出を確認しました。',
-            subMessage: '食費として自然でも、今月のカテゴリ枠としてはかなり前のめりです。後半が少し心配な流れです。',
-          ),
-        ]);
+        final variant = _pickVariant(
+          'latest_supermarket_category_danger_$lang',
+          isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} is pushing it',
+                    subMessage: 'Essentials, yes. But this category is getting tight.',
+                  ),
+                  (
+                    message: 'Groceries are getting heavy',
+                    subMessage: 'Necessary, but the pace here is pretty aggressive now.',
+                  ),
+                  (
+                    message: 'Food spending is near the limit',
+                    subMessage: 'Not something to blame, but each move will feel heavier from here.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、食費が攻めてるね',
+                    subMessage: '生活には必要だよ。ただ、このカテゴリはかなりギリギリだね。',
+                  ),
+                  (
+                    message: 'スーパー、重くなってきたね',
+                    subMessage: '必要枠でも、食費ペースはだいぶ前のめりだよ。後半ちょっと心配だね。',
+                  ),
+                  (
+                    message: '食費、限界近いなね',
+                    subMessage: '責めるやつじゃないけど、ここからは一回ずつ重くなるよ。',
+                  ),
+                ],
+        );
 
         latestComment = _LatestComment(
-          scenarioKey: 'latest_supermarket_category_danger',
-          notificationBody: '🛒 ${latestExpense.storeName} の支出を記録しました。食費カテゴリの予算ペースがかなり速めです。',
+          scenarioKey: 'latest_supermarket_category_danger_$lang',
+          notificationBody: _t(
+            lang,
+            '🛒 ${latestExpense.storeName} の支出を記録したよ。食費カテゴリの予算ペースがかなり速めだね。',
+            '🛒 ${latestExpense.storeName} logged. Food category spending is moving fast.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
         );
       } else if (ruleResult?.paceStatus == PaceStatus.warning) {
-        final variant = _pickVariant('latest_supermarket_category_warning', [
-          (
-            message: '${latestExpense.storeName}での買い物を記録しました。',
-            subMessage: '必要な買い物のことも多いですが、このカテゴリの進み方は少し早めです。今のうちに整えると後半が楽です。',
-          ),
-          (
-            message: '${latestExpense.storeName}ですね。',
-            subMessage: '生活費として自然でも、カテゴリ予算は少し速めに進んでいます。ここからは配分を少し意識したいところです。',
-          ),
-          (
-            message: 'スーパーでの支出を確認しました。',
-            subMessage: '今回は責める場面ではありませんが、カテゴリ予算の減り方としては少し存在感が出てきています。',
-          ),
-        ]);
+        final variant = _pickVariant(
+          'latest_supermarket_category_warning_$lang',
+          isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} is moving a bit fast',
+                    subMessage: 'Necessary shopping, but the food category is starting to stand out.',
+                  ),
+                  (
+                    message: 'Groceries are starting to show',
+                    subMessage: 'This is normal life spending. Still, the pace is worth watching from here.',
+                  ),
+                  (
+                    message: 'Food spending has presence now',
+                    subMessage: 'Not something to blame, but it may affect the room you have later in the month.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、食費ペース早めだね',
+                    subMessage: '必要な買い物だけど、カテゴリの減り方は少し目立ってきたね。',
+                  ),
+                  (
+                    message: 'スーパー、じわっと効いてるね',
+                    subMessage: '生活費として自然だよ。ただ、ここからは配分も少し見ておきたいね。',
+                  ),
+                  (
+                    message: '食費、存在感出てきたね',
+                    subMessage: '責める場面じゃないけど、後半の余裕にはちゃんと効いてくるよ。',
+                  ),
+                ],
+        );
 
         latestComment = _LatestComment(
-          scenarioKey: 'latest_supermarket_category_warning',
-          notificationBody: '🛒 ${latestExpense.storeName} の支出を記録しました。食費カテゴリが少し早めのペースです。',
+          scenarioKey: 'latest_supermarket_category_warning_$lang',
+          notificationBody: _t(
+            lang,
+            '🛒 ${latestExpense.storeName} の支出を記録したよ。食費カテゴリが少し早めのペースだね。',
+            '🛒 ${latestExpense.storeName} logged. Food category spending is moving a bit fast.',
+          ),
           message: variant.message,
           subMessage: variant.subMessage,
         );
       } else {
+        final variant = _pickVariant(
+          'latest_supermarket_$lang',
+          isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} is essentials',
+                    subMessage: 'Groceries are the foundation. The wallet will quietly watch this one.',
+                  ),
+                  (
+                    message: 'Another grocery run',
+                    subMessage: 'Nothing dramatic. Just the kind of spending that quietly shapes the month.',
+                  ),
+                  (
+                    message: 'Food spending noted',
+                    subMessage: 'This is the kind of spending that makes sense. Keeping it visible still helps.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、必要枠だね',
+                    subMessage: 'スーパーは生活の土台だよ。今日は静かに見守るね。',
+                  ),
+                  (
+                    message: 'スーパーだね',
+                    subMessage: '生活の一部だね。こういうのが今月の流れを作っていくよ。',
+                  ),
+                  (
+                    message: '食費、ちゃんと見えてるね',
+                    subMessage: '必要な支出だね。こういう土台の支出こそ、見える形にしておくと安心だよ。',
+                  ),
+                ],
+        );
+
         latestComment = _LatestComment(
-          scenarioKey: 'latest_supermarket',
-          notificationBody: '🛒 ${latestExpense.storeName} の支出を記録しました。',
-          message: '${latestExpense.storeName}での買い物を記録しました。',
-          subMessage: 'スーパーの買い物は生活に必要なことも多いので、今回は静かに見守ります。',
+          scenarioKey: 'latest_supermarket_$lang',
+          notificationBody: _t(
+            lang,
+            '🛒 ${latestExpense.storeName} の支出を記録したよ。',
+            '🛒 ${latestExpense.storeName} logged.',
+          ),
+          message: variant.message,
+          subMessage: variant.subMessage,
         );
       }
     }
@@ -1943,53 +2939,102 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     else if (judge.tags.contains(ExpenseJudgeTag.movie)) {
       final variant = ruleResult?.paceStatus == PaceStatus.danger ||
               ruleResult?.paceStatus == PaceStatus.over
-          ? _pickVariant('latest_movie_danger', [
-              (
-                message: '${latestExpense.storeName}、映画の支出ですね（平均${latestMovieAverage}円）。',
-                subMessage: '楽しさはありますが、今の予算ペースだと少し重ためです。平均${latestMovieAverage}円で、今月のエンタメ枠は慎重めでいきたいところです。',
-              ),
-              (
-                message: '${latestExpense.storeName}、映画の記録を確認しました。',
-                subMessage: 'リフレッシュには良いですが、今の流れだと財布には少し強めに効いています。平均${latestMovieAverage}円。',
-              ),
-              (
-                message: '${latestExpense.storeName}ですね。映画時間だったんですね。',
-                subMessage: '満足感は高そうですが、予算の進み方としては少し前のめりです。平均${latestMovieAverage}円。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.warning
-              ? _pickVariant('latest_movie_warning', [
+          ? _pickVariant('latest_movie_danger_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}、映画の支出ですね（平均${latestMovieAverage}円）。',
-                    subMessage: 'まだ大丈夫ですが、エンタメ系としては少しペースが出てきています。平均${latestMovieAverage}円。',
+                    message: '${latestExpense.storeName} movie time',
+                    subMessage: 'Great experience, but at this pace it is starting to hit the wallet a bit harder.',
                   ),
                   (
-                    message: '${latestExpense.storeName}、映画の記録を確認しました。',
-                    subMessage: '気分転換としては良いですが、回数が重なるとじわじわ効いてきそうです。平均${latestMovieAverage}円。',
+                    message: 'Movies are coming in strong',
+                    subMessage: 'Nice refresh, but this month is leaning forward a bit.',
                   ),
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: 'いまのうちに少し整えておくと、後半も気持ちよく楽しめそうです。平均${latestMovieAverage}円。',
+                    message: 'That was a good use of time',
+                    subMessage: 'About ${latestMovieAverage}. It adds up quietly. Might be worth pacing a bit.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、映画だね',
+                    subMessage: '満足度は高そうだね。ただ今のペースだと、財布にはちょっと重めに効いてるよ。',
+                  ),
+                  (
+                    message: '映画、来てるね',
+                    subMessage: 'リフレッシュにはいいね。でも今月は少し前のめりな流れだね。',
+                  ),
+                  (
+                    message: 'その時間、いい使い方だね',
+                    subMessage: 'ただ平均${latestMovieAverage}円、じわっと効いてるね。ここからは少し慎重でもいいかもね。',
                   ),
                 ])
-              : _pickVariant('latest_movie_fit', [
-                  (
-                    message: '${latestExpense.storeName}、映画の支出ですね（平均${latestMovieAverage}円）。',
-                    subMessage: '今のところは予算の範囲で楽しめています。こういう支出も見える化できているのがかなり良いです。平均${latestMovieAverage}円。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}、映画の記録を確認しました。',
-                    subMessage: '楽しみのお金として、今はきれいに把握できています。平均${latestMovieAverage}円。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '気分転換の支出も、見えていればかなり管理しやすいです。平均${latestMovieAverage}円。',
-                  ),
-                ]);
+          : ruleResult?.paceStatus == PaceStatus.warning
+              ? _pickVariant('latest_movie_warning_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} movie day',
+                        subMessage: 'Nice break. The pace is starting to show a little though.',
+                      ),
+                      (
+                        message: 'Movies in a good flow',
+                        subMessage: 'Enjoyable, but repeated visits will start to show later.',
+                      ),
+                      (
+                        message: 'Looks like a movie day',
+                        subMessage: 'Around ${latestMovieAverage}. Adjusting now could make the rest of the month easier.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、映画だね',
+                        subMessage: 'いい気分転換だね。ただ少しペースは出てきてるよ。',
+                      ),
+                      (
+                        message: '映画、いい流れだね',
+                        subMessage: '楽しめてるね。ただ回数が重なると、あとで効いてくるタイプだよ。',
+                      ),
+                      (
+                        message: '映画の日だね',
+                        subMessage: '平均${latestMovieAverage}円。今のうちに少し整えると、後半かなり楽になるよ。',
+                      ),
+                    ])
+              : _pickVariant('latest_movie_fit_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} movie time',
+                        subMessage: 'Nice balance so far. Still well within budget.',
+                      ),
+                      (
+                        message: 'Good way to spend time',
+                        subMessage: 'Entertainment like this is great when it stays visible.',
+                      ),
+                      (
+                        message: 'That was a good call',
+                        subMessage: 'Everything looks balanced right now. This can keep going smoothly.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、映画だね',
+                        subMessage: 'ちゃんと楽しめてるね。今のところは予算内でいい流れだよ。',
+                      ),
+                      (
+                        message: '映画、いい使い方だね',
+                        subMessage: 'こういう支出も見えてるのがいいね。平均${latestMovieAverage}円。',
+                      ),
+                      (
+                        message: 'いい時間の使い方だね',
+                        subMessage: '今はバランスも取れてるね。このままいけそうだよ。',
+                      ),
+                    ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_movie',
-        notificationBody: '🎬 ${latestExpense.storeName} の映画系支出を記録しました。',
+        scenarioKey: 'latest_movie_$lang',
+        notificationBody: _t(
+          lang,
+          '🎬 ${latestExpense.storeName} の映画系支出を記録したよ。',
+          '🎬 ${latestExpense.storeName} movie spending logged.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -1998,53 +3043,102 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     else if (judge.tags.contains(ExpenseJudgeTag.karaoke)) {
       final variant = ruleResult?.paceStatus == PaceStatus.danger ||
               ruleResult?.paceStatus == PaceStatus.over
-          ? _pickVariant('latest_karaoke_danger', [
-              (
-                message: '${latestExpense.storeName}でカラオケですね。',
-                subMessage: '楽しさは伝わりますが、今の予算ペースだと少し強めに響いています。',
-              ),
-              (
-                message: '${latestExpense.storeName}、歌ってきましたか。',
-                subMessage: 'ストレス発散には良さそうですが、財布は少し真顔になっています。',
-              ),
-              (
-                message: '${latestExpense.storeName}ですね。',
-                subMessage: '楽しい支出ですが、今の流れだと予算への存在感は大きめです。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.warning
-              ? _pickVariant('latest_karaoke_warning', [
+          ? _pickVariant('latest_karaoke_danger_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}でカラオケですね。',
-                    subMessage: 'まだ大丈夫ですが、娯楽系の支出としては少し目立ってきています。',
+                    message: '${latestExpense.storeName} karaoke time',
+                    subMessage: 'Good release, but at this pace it is starting to hit the wallet a bit harder.',
                   ),
                   (
-                    message: '${latestExpense.storeName}、いいですね。',
-                    subMessage: '気分転換としては良いですが、回数が増えるとじわっと効いてきそうです。',
+                    message: 'Looks like a singing day',
+                    subMessage: 'The mood is probably better now. The budget, maybe slightly less so.',
                   ),
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '今のうちに少し整えると、後半も気持ちよく遊べそうです。',
+                    message: 'Karaoke came in strong',
+                    subMessage: 'Fun is real. But if the visits stack up, the wallet will remember the chorus.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、カラオケだね',
+                    subMessage: 'しっかり発散してるね。ただ今のペースだと、財布には少し強めに効いてるよ。',
+                  ),
+                  (
+                    message: '歌ってきたね',
+                    subMessage: '気分は良さそうだね。でも今月はちょっと前のめりな流れだよ。',
+                  ),
+                  (
+                    message: 'カラオケ、強めに来てるね',
+                    subMessage: '楽しさはあるね。ただ回数が重なると、財布もサビを覚えそうだよ。',
                   ),
                 ])
-              : _pickVariant('latest_karaoke_fit', [
-                  (
-                    message: '${latestExpense.storeName}でカラオケですね。',
-                    subMessage: '今のところは予算の範囲で楽しめています。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}、いいリフレッシュですね。',
-                    subMessage: 'こういう支出も、見えていればかなり管理しやすいです。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '楽しみのお金として、今は落ち着いて見られています。',
-                  ),
-                ]);
+          : ruleResult?.paceStatus == PaceStatus.warning
+              ? _pickVariant('latest_karaoke_warning_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} karaoke day',
+                        subMessage: 'Nice release. The pace is starting to show a little though.',
+                      ),
+                      (
+                        message: 'Karaoke is in a good flow',
+                        subMessage: 'Enjoyable, but repeated sessions can start to echo later.',
+                      ),
+                      (
+                        message: 'Singing day unlocked',
+                        subMessage: 'Keeping the pace in view now should make the rest of the month easier.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、カラオケだね',
+                        subMessage: 'いい発散だね。ただ少しペースは出てきてるよ。',
+                      ),
+                      (
+                        message: 'カラオケ、いい流れだね',
+                        subMessage: '楽しめてるね。ただ回数が増えるとじわっと響いてくるタイプだよ。',
+                      ),
+                      (
+                        message: '今日は歌う日だね',
+                        subMessage: '今のうちに少し整えると、後半も気持ちよく遊べるよ。',
+                      ),
+                    ])
+              : _pickVariant('latest_karaoke_fit_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} karaoke time',
+                        subMessage: 'Nice release. So far, the balance looks fine.',
+                      ),
+                      (
+                        message: 'Good use of fun money',
+                        subMessage: 'Spending like this is easier to enjoy when it stays visible.',
+                      ),
+                      (
+                        message: 'That sounds like a good break',
+                        subMessage: 'There is still room for this kind of fun right now.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、カラオケだね',
+                        subMessage: 'ちゃんと発散できてるね。今のところは予算内でいい流れだよ。',
+                      ),
+                      (
+                        message: 'カラオケ、いい使い方だね',
+                        subMessage: 'こういう支出も見えてるのがいいね。バランス取れてるよ。',
+                      ),
+                      (
+                        message: 'いい時間の使い方だね',
+                        subMessage: '今は余裕もあるね。このまま楽しんでいけそうだよ。',
+                      ),
+                    ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_karaoke',
-        notificationBody: '🎤 ${latestExpense.storeName} のカラオケ支出を記録しました。',
+        scenarioKey: 'latest_karaoke_$lang',
+        notificationBody: _t(
+          lang,
+          '🎤 ${latestExpense.storeName} のカラオケ支出を記録したよ。',
+          '🎤 ${latestExpense.storeName} karaoke spending logged.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -2053,165 +3147,310 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     else if (judge.tags.contains(ExpenseJudgeTag.arcade)) {
       final variant = ruleResult?.paceStatus == PaceStatus.danger ||
               ruleResult?.paceStatus == PaceStatus.over
-          ? _pickVariant('latest_arcade_danger', [
-              (
-                message: '${latestExpense.storeName}で遊んできたんですね。',
-                subMessage: '楽しそうですが、今の予算ペースだと少し効き方が強めです。',
-              ),
-              (
-                message: '${latestExpense.storeName}を確認しました。',
-                subMessage: '遊びのお金としては、今の流れだと少し前のめりかもしれません。',
-              ),
-              (
-                message: '${latestExpense.storeName}ですね。',
-                subMessage: '気分転換には良さそうですが、財布は少し静かに焦っています。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.warning
-              ? _pickVariant('latest_arcade_warning', [
+          ? _pickVariant('latest_arcade_danger_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}で遊んできたんですね。',
-                    subMessage: 'まだ大丈夫ですが、娯楽系としては少し存在感が出てきています。',
+                    message: '${latestExpense.storeName} arcade time',
+                    subMessage: 'Fun is real, but at this pace it is starting to hit the wallet a bit harder.',
                   ),
                   (
-                    message: '${latestExpense.storeName}を確認しました。',
-                    subMessage: '楽しい支出ですが、積み重なるとあとで効いてきそうです。',
+                    message: 'Arcades are coming in strong',
+                    subMessage: 'Great break, though the month is leaning forward a bit.',
                   ),
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '今のうちに少し整えておくと、後半もかなり楽になりそうです。',
+                    message: 'That play hit a bit heavy',
+                    subMessage: 'Enjoyable, but repeated sessions will leave a clear footprint.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、遊び枠だね',
+                    subMessage: '楽しそうだね。ただ今のペースだと、財布には少し強めに効いてるよ。',
+                  ),
+                  (
+                    message: 'ゲーセン、来たね',
+                    subMessage: '気分転換にはいいね。でも今月は少し前のめりな流れだよ。',
+                  ),
+                  (
+                    message: '遊び、一発効いてるね',
+                    subMessage: '楽しさの勝利だね。財布は静かに焦ってるよ。',
                   ),
                 ])
-              : _pickVariant('latest_arcade_fit', [
-                  (
-                    message: '${latestExpense.storeName}で遊んできたんですね。',
-                    subMessage: '今のところは予算の範囲で楽しめています。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}を確認しました。',
-                    subMessage: '遊びのお金も、見えていればかなり管理しやすいです。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '楽しみの支出として、今は落ち着いて見られています。',
-                  ),
-                ]);
+          : ruleResult?.paceStatus == PaceStatus.warning
+              ? _pickVariant('latest_arcade_warning_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} arcade day',
+                        subMessage: 'Nice break. The pace is starting to show a little though.',
+                      ),
+                      (
+                        message: 'Arcades in a good flow',
+                        subMessage: 'Fun, but repeated visits can start to show later.',
+                      ),
+                      (
+                        message: 'Looks like a play day',
+                        subMessage: 'Keeping the pace in view now should make the rest of the month easier.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、遊んできたね',
+                        subMessage: 'まだ大丈夫だよ。ただ娯楽系としては少し存在感が出てきたよ。',
+                      ),
+                      (
+                        message: 'ゲーセン、いい流れだね',
+                        subMessage: '楽しい支出だね。でも積み重なると、あとで効いてくるタイプだよ。',
+                      ),
+                      (
+                        message: '今日は遊びの日だね',
+                        subMessage: '今のうちに少し整えると、後半も気持ちよく遊べるよ。',
+                      ),
+                    ])
+              : _pickVariant('latest_arcade_fit_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} arcade time',
+                        subMessage: 'Nice balance so far. Still within budget.',
+                      ),
+                      (
+                        message: 'Good use of fun money',
+                        subMessage: 'Spending like this is easier to enjoy when it stays visible.',
+                      ),
+                      (
+                        message: 'That was a good break',
+                        subMessage: 'There is still room for this kind of fun right now.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、遊び枠だね',
+                        subMessage: '今のところは予算内で楽しめてるよ。いい流れだな。',
+                      ),
+                      (
+                        message: '遊びのお金、見えてるね',
+                        subMessage: 'こういう支出も見えてるのがいいね。管理しやすいよ。',
+                      ),
+                      (
+                        message: 'いい時間の使い方だね',
+                        subMessage: '今は落ち着いて見られるペースだよ。このまま楽しめそうだね。',
+                      ),
+                    ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_arcade',
-        notificationBody: '🎮 ${latestExpense.storeName} の遊び系支出を記録しました。',
+        scenarioKey: 'latest_arcade_$lang',
+        notificationBody: _t(
+          lang,
+          '🎮 ${latestExpense.storeName} の遊び系支出を記録したよ。',
+          '🎮 ${latestExpense.storeName} arcade spending logged.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
     }
 
     else if (hasConsecutiveStoreSpending && latestStore.isNotEmpty) {
-      final variant = _pickVariant('consecutive_store_$latestStore', [
-        (
-          message: '$latestStoreが$consecutiveStoreCount回連続ですね。',
-          subMessage: 'かなり気に入っているのが伝わってきます。',
-        ),
-        (
-          message: 'また$latestStoreですね。これで$consecutiveStoreCount回連続です。',
-          subMessage: '好きなお店があるのは良いですが、財布はしっかり見ています。',
-        ),
-        (
-          message: '$latestStore、連続記録更新中です。',
-          subMessage: 'ここまで来ると、もはや生活の一部かもしれません。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'consecutive_store_${latestStore}_$lang',
+        isEn
+            ? [
+                (
+                  message: '$latestStore again',
+                  subMessage: '$consecutiveStoreCount times in a row. This is becoming a pattern.',
+                ),
+                (
+                  message: '$latestStore streak going',
+                  subMessage: '$consecutiveStoreCount visits straight. Even the wallet remembers now.',
+                ),
+                (
+                  message: '$latestStore is not stopping',
+                  subMessage: 'At this point, it feels more like routine than coincidence.',
+                ),
+              ]
+            : [
+                (
+                  message: '$latestStore、続いてるね',
+                  subMessage: '$consecutiveStoreCount回続いてるよ。もう流れになってきてるね。',
+                ),
+                (
+                  message: 'また$latestStoreだね',
+                  subMessage: 'ここまで来ると、好きというより習慣に近いね。',
+                ),
+                (
+                  message: '$latestStore、止まってないね',
+                  subMessage: '$consecutiveStoreCount回連続。生活の一部っぽくなってきたね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'consecutive_store',
-        notificationBody: '$latestStore の支出が$consecutiveStoreCount回連続です。',
+        scenarioKey: 'consecutive_store_$lang',
+        notificationBody: _t(
+          lang,
+          '$latestStore の支出が$consecutiveStoreCount回続いてるね。',
+          '$latestStore spending $consecutiveStoreCount times in a row.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
     }
 
-    else if (latestStore.isNotEmpty) {
-      final count = storeCounts[latestStore] ?? 0;
-      if (count >= 3) {
-        final variant = _pickVariant('store_repeat_$latestStore', [
-          (
-            message: '$latestStore、今月$count回目です。',
-            subMessage: 'かなり通っていますね。ポイントカードがあなたを覚えています。',
-          ),
-          (
-            message: '$latestStore、今月もう$count回目です。',
-            subMessage: 'ここまで来ると常連です。店員さんの方が先に気づきます。',
-          ),
-          (
-            message: '$latestStore率が高めです。今月$count回目です。',
-            subMessage: '好きなのは伝わります。財布にも伝わっています。',
-          ),
-        ]);
+else if (latestStore.isNotEmpty) {
+  final count = storeCounts[latestStore] ?? 0;
+  if (count >= 3) {
+    final variant = _pickVariant(
+      'store_repeat_${latestStore}_$lang',
+      isEn
+          ? [
+              (
+                message: '$latestStore shows up again',
+                subMessage: '$count times this month. This is turning into a regular spot.',
+              ),
+              (
+                message: 'Back to $latestStore',
+                subMessage: 'Already $count visits. This is basically part of your routine now.',
+              ),
+              (
+                message: '$latestStore frequency is high',
+                subMessage: 'The pattern is clear. The wallet sees it too.',
+              ),
+            ]
+          : [
+              (
+                message: '$latestStore、よく来てるね',
+                subMessage: '今月$count回目だよ。もう定番ルートっぽいね。',
+              ),
+              (
+                message: 'また$latestStoreだね',
+                subMessage: '$count回目まで来てるよ。習慣になりつつあるね。',
+              ),
+              (
+                message: '$latestStore率、高めだね',
+                subMessage: '好きなのは伝わってるよ。財布にもちゃんと伝わってるけどね。',
+              ),
+            ],
+    );
 
-        latestComment = _LatestComment(
-          scenarioKey: 'store_repeat',
-          notificationBody: '$latestStore の支出が$count回目です。',
-          message: variant.message,
-          subMessage: variant.subMessage,
-        );
-      } else {
-        final variant = _pickVariant('default', [
-          (
-            message: '直近の支出は${latestExpense.storeName}ですね。',
-            subMessage: '今のところは大丈夫ですが、油断は禁物です。',
-          ),
-          (
-            message: '${latestExpense.storeName}での支出を確認しました。',
-            subMessage: '一回ずつ記録していくのは、とても良い習慣です。',
-          ),
-          (
-            message: '${latestExpense.storeName}ですね。',
-            subMessage: '少しずつでも把握できているのはかなり良い状態です。',
-          ),
-        ]);
+    latestComment = _LatestComment(
+      scenarioKey: 'store_repeat_$lang',
+      notificationBody: _t(
+        lang,
+        '$latestStore に今月$count回行ってるね。',
+        '$latestStore visited $count times this month.',
+      ),
+      message: variant.message,
+      subMessage: variant.subMessage,
+    );
+  } else {
+    final variant = _pickVariant(
+      'default_$lang',
+      isEn
+          ? [
+              (
+                message: '${latestExpense.storeName} this time',
+                subMessage: 'Nothing dramatic. Just a small move in the month.',
+              ),
+              (
+                message: 'A stop at ${latestExpense.storeName}',
+                subMessage: 'One expense at a time. This is how the flow stays visible.',
+              ),
+              (
+                message: '${latestExpense.storeName} in the flow',
+                subMessage: 'Looks normal. Keeping it visible is what matters.',
+              ),
+            ]
+          : [
+              (
+                message: '${latestExpense.storeName}だね',
+                subMessage: '特に大きな動きではないね。でもこういうのが流れを作るよ。',
+              ),
+              (
+                message: '${latestExpense.storeName}寄ったね',
+                subMessage: '一つずつ見えてるの、かなりいい状態だよ。',
+              ),
+              (
+                message: '${latestExpense.storeName}の流れだね',
+                subMessage: '今のところは自然な動きだよ。ちゃんと追えてるね。',
+              ),
+            ],
+    );
 
-        latestComment = _LatestComment(
-          scenarioKey: 'default',
-          notificationBody: '${latestExpense.storeName} の支出を記録しました。',
-          message: variant.message,
-          subMessage: variant.subMessage,
-        );
-      }
-    }
+      latestComment = _LatestComment(
+        scenarioKey: 'default_$lang',
+        notificationBody: _t(
+          lang,
+          '支出を確認したよ。',
+          'Spending noted.',
+        ),
+        message: variant.message,
+        subMessage: variant.subMessage,
+      );
+  }
+}
 
     else if (judge.tags.contains(ExpenseJudgeTag.kids) ||
         judge.tags.contains(ExpenseJudgeTag.family)) {
       final variant = ruleResult?.categoryFit == CategoryFit.mismatch
-          ? _pickVariant('latest_kids_mismatch', [
-              (
-                message: '${latestExpense.storeName}、${latestExpense.category}に入っていますね。',
-                subMessage: '子ども関連の支出は分けておくと、あとでかなり振り返りやすくなります。',
-              ),
-              (
-                message: '${latestExpense.storeName}が${latestExpense.category}扱いになっています。',
-                subMessage: '育児や子ども向けの出費は、見えるようにしておくと管理しやすいです。',
-              ),
-              (
-                message: '${latestExpense.storeName}、今回はカテゴリが少し広めかもしれません。',
-                subMessage: '大事な支出だからこそ、意味が見えるようにしておくと安心です。',
-              ),
-            ])
-          : _pickVariant('latest_kids_fit', [
-              (
-                message: '${latestExpense.storeName}での支出を記録しました。',
-                subMessage: '子どもや家族に関わるお金のこともあるので、今回はやさしく見守ります。',
-              ),
-              (
-                message: '${latestExpense.storeName}ですね。',
-                subMessage: '家族や子ども向けの支出は大事な場面も多いので、ここは静かに見ていきます。',
-              ),
-              (
-                message: '${latestExpense.storeName}での記録を確認しました。',
-                subMessage: '必要な出費のことも多いので、まずは責めずに把握していきましょう。',
-              ),
-            ]);
+          ? _pickVariant('latest_kids_mismatch_$lang', isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} feels like family spending',
+                    subMessage: 'It is under ${latestExpense.category}. Keeping family-related expenses separate can make the month much easier to read.',
+                  ),
+                  (
+                    message: '${latestExpense.storeName} looks meaningful',
+                    subMessage: 'If this was for kids or family, putting it in a clearer place can help later.',
+                  ),
+                  (
+                    message: '${latestExpense.storeName} may be a bit broad',
+                    subMessage: 'The more important the expense, the more helpful it is to keep it visible.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、家族枠っぽいね',
+                    subMessage: '${latestExpense.category}に入ってるよ。分けておくと、あとでかなり見やすいよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、意味ある支出だね',
+                    subMessage: '子どもや家族向けなら、ちゃんと見える場所に置くと安心だね。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、少し広めに入ってるね',
+                    subMessage: '大事な支出ほど、あとで分かる形にしておくと助かるね。',
+                  ),
+                ])
+          : _pickVariant('latest_kids_fit_$lang', isEn
+              ? [
+                  (
+                    message: '${latestExpense.storeName} is family spending',
+                    subMessage: 'Some expenses matter beyond the number. This one can be watched gently.',
+                  ),
+                  (
+                    message: '${latestExpense.storeName} feels necessary',
+                    subMessage: 'Money for kids or family is not something to scold. Keeping it visible is what matters.',
+                  ),
+                  (
+                    message: '${latestExpense.storeName} is worth noting',
+                    subMessage: 'Looks like an important expense. The wallet will keep this one quiet and visible.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、家族枠だね',
+                    subMessage: 'こういう支出は大事な場面もあるね。今日はやさしく見守るね。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、必要枠かもね',
+                    subMessage: '子どもや家族向けのお金は、責めるよりちゃんと見えることが大事だね。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、大事な支出っぽいね',
+                    subMessage: 'まずは静かに見守っておくね。こういうお金もちゃんと残しておくと安心だよ。',
+                  ),
+                ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_kids',
+        scenarioKey: 'latest_kids_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2221,54 +3460,103 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     else if (judge.tags.contains(ExpenseJudgeTag.gambling)) {
       final variant = ruleResult?.paceStatus == PaceStatus.danger ||
               ruleResult?.paceStatus == PaceStatus.over
-          ? _pickVariant('latest_gambling_danger', [
-              (
-                message: '${latestExpense.storeName}での支出ですね。',
-                subMessage: 'このカテゴリの進み方としてはかなり重めです。少し立ち止まって見たいところです。',
-              ),
-              (
-                message: '${latestExpense.storeName}を確認しました。',
-                subMessage: '今のペースだと、あとで響きやすい使い方になっています。',
-              ),
-              (
-                message: '${latestExpense.storeName}ですね。',
-                subMessage: '楽しさはあるかもしれませんが、予算の減り方としてはかなり強めです。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.warning
-              ? _pickVariant('latest_gambling_warning', [
+          ? _pickVariant('latest_gambling_danger_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}での支出ですね。',
-                    subMessage: 'まだすぐ危険ではありませんが、少しペースは意識しておきたいところです。',
+                    message: '${latestExpense.storeName} was a risky move',
+                    subMessage: 'At this pace, it is hitting the wallet pretty hard. This is a good point to step back and check the flow.',
                   ),
                   (
-                    message: '${latestExpense.storeName}を記録しました。',
-                    subMessage: '今のうちに流れを見ておくと、後半がかなり楽になります。',
+                    message: 'The gambling pace is showing',
+                    subMessage: 'There may be fun in it, but this month is leaning forward now.',
                   ),
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: 'いまは軽めでも、重なると存在感が出やすい支出です。',
+                    message: 'That move carried weight',
+                    subMessage: 'One round can shift the whole month. This is a good place to slow the flow down.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、勝負してきたね',
+                    subMessage: '今のペースだと、財布にはかなり強めに効いてるよ。一度流れ、見たいところだね。',
+                  ),
+                  (
+                    message: 'ギャンブル、来てるね',
+                    subMessage: '楽しさはあるかもね。ただ今月はちょっと前のめりな流れだよ。',
+                  ),
+                  (
+                    message: 'その一手、重めだね',
+                    subMessage: '一回でも流れ変えるやつだよ。ここは少し落ち着きたいところだね。',
                   ),
                 ])
-              : _pickVariant('latest_gambling_fit', [
-                  (
-                    message: '${latestExpense.storeName}での支出を記録しました。',
-                    subMessage: '今のところは記録を続けて、流れを見ていくのが良さそうです。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: 'まずは見える化できていることが大事です。ここから使い方を見ていきましょう。',
-                  ),
-                  (
-                    message: '${latestExpense.storeName}を確認しました。',
-                    subMessage: '強く言う段階ではありませんが、流れは把握しておきたい支出です。',
-                  ),
-                ]);
+          : ruleResult?.paceStatus == PaceStatus.warning
+              ? _pickVariant('latest_gambling_warning_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} was a gamble',
+                        subMessage: 'Still manageable, but this category can build momentum quickly.',
+                      ),
+                      (
+                        message: 'This is starting to show',
+                        subMessage: 'Watching the flow now could make the rest of the month much easier.',
+                      ),
+                      (
+                        message: 'That move is worth remembering',
+                        subMessage: 'It can look light once, but repeated rounds tend to hit harder than expected.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、勝負したね',
+                        subMessage: 'まだ大丈夫だよ。ただこのカテゴリは流れが出やすいからね。',
+                      ),
+                      (
+                        message: 'ちょっと来てるね',
+                        subMessage: '今のうちに流れ見ておくと、後半かなり楽になるよ。',
+                      ),
+                      (
+                        message: 'その一手、覚えておきたいね',
+                        subMessage: '軽く見えても、重なるとしっかり効いてくるタイプだよ。',
+                      ),
+                    ])
+              : _pickVariant('latest_gambling_fit_$lang', isEn
+                  ? [
+                      (
+                        message: '${latestExpense.storeName} is noted',
+                        subMessage: 'So far, it is visible and under control. Keep watching the flow.',
+                      ),
+                      (
+                        message: 'A betting day, then',
+                        subMessage: 'The important part is that it is visible. From here, the flow matters.',
+                      ),
+                      (
+                        message: 'One move made',
+                        subMessage: 'There is still room for now. Just do not lose sight of the pattern.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、見えてるね',
+                        subMessage: '今のところは把握できてるね。この流れ、ちゃんと見ていこうね。',
+                      ),
+                      (
+                        message: '勝負の日だったね',
+                        subMessage: 'まずは見えてるのがいいね。ここからどう動くかだね。',
+                      ),
+                      (
+                        message: '一手打ったね',
+                        subMessage: '今はまだ余裕あるね。流れだけは見失わないようにね。',
+                      ),
+                    ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_gambling',
+        scenarioKey: 'latest_gambling_$lang',
         notificationBody: judge.shouldNotify
-            ? '${latestExpense.storeName}でギャンブル系の支出を記録しました。'
+            ? _t(
+                lang,
+                '${latestExpense.storeName}でギャンブル系の支出を確認したよ。',
+                '${latestExpense.storeName} gambling-related spending noted.',
+              )
             : '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2277,70 +3565,134 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     else if (judge.tags.contains(ExpenseJudgeTag.luxury)) {
       final variant = ruleResult?.categoryFit == CategoryFit.mismatch
-          ? _pickVariant('latest_luxury_mismatch', [
-              (
-                message: '${latestExpense.storeName}、${latestExpense.category}に入っていますね。',
-                subMessage: '高級品寄りの支出は、分けておくとかなり見えやすくなります。',
-              ),
-              (
-                message: '${latestExpense.storeName}が${latestExpense.category}扱いになっています。',
-                subMessage: '存在感のある支出なので、カテゴリを分けると管理しやすそうです。',
-              ),
-              (
-                message: '${latestExpense.storeName}、今回はカテゴリが少し広めです。',
-                subMessage: 'こういう支出は見えるようにしておくと、あとでかなり振り返りやすいです。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.danger ||
-                  ruleResult?.paceStatus == PaceStatus.over
-              ? _pickVariant('latest_luxury_danger', [
+          ? _pickVariant('latest_luxury_mismatch_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '満足感は高そうですが、予算の進み方としてはかなり強めです。',
+                    message: '${latestExpense.storeName} feels like a premium spend',
+                    subMessage: 'It is under ${latestExpense.category}. Splitting this out can make the month much easier to read.',
                   ),
                   (
-                    message: '${latestExpense.storeName}を確認しました。',
-                    subMessage: 'こうした大きめの支出が、今のペースだとかなり響きやすい状態です。',
+                    message: '${latestExpense.storeName} has presence',
+                    subMessage: 'Big moves are easier to track when they are clearly placed.',
                   ),
                   (
-                    message: '${latestExpense.storeName}での支出ですね。',
-                    subMessage: '今の流れだと、少し慎重なくらいでちょうどよさそうです。',
+                    message: '${latestExpense.storeName} might be a bit broad',
+                    subMessage: 'Keeping larger expenses visible helps the wallet later.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、高級枠っぽいね',
+                    subMessage: '${latestExpense.category}に入ってるよ。分けておくと、あとでかなり見やすいよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、存在感あるね',
+                    subMessage: 'こういう支出は分けておくと、あとでかなり追いやすいよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、少し広めに入ってるね',
+                    subMessage: '大きめの一手ほど、見える形にしておくと助かるよ。',
                   ),
                 ])
-              : ruleResult?.paceStatus == PaceStatus.warning
-                  ? _pickVariant('latest_luxury_warning', [
+          : ruleResult?.paceStatus == PaceStatus.danger ||
+                  ruleResult?.paceStatus == PaceStatus.over
+              ? _pickVariant('latest_luxury_danger_$lang', isEn
+                  ? [
                       (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: 'まだ危険ではありませんが、少し存在感のある使い方です。',
+                        message: '${latestExpense.storeName} came in strong',
+                        subMessage: 'High satisfaction, but at this pace it is hitting the wallet quite hard.',
                       ),
                       (
-                        message: '${latestExpense.storeName}を記録しました。',
-                        subMessage: '今のうちにペースを見ておくと、あとでかなり楽になります。',
+                        message: 'That one has weight',
+                        subMessage: 'A larger move like this can echo through the rest of the month.',
                       ),
                       (
-                        message: '${latestExpense.storeName}での支出ですね。',
-                        subMessage: '満足感はありそうですが、予算面では少し意識しておきたいところです。',
+                        message: 'A bold purchase there',
+                        subMessage: 'Could be a great buy. From here, pacing might help.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、強めだね',
+                        subMessage: '満足感は高そうだね。ただ今のペースだと、財布にはかなり重めに効いてるよ。',
+                      ),
+                      (
+                        message: 'これは存在感あるね',
+                        subMessage: '大きめの一手だね。今の流れだと、あとでかなり響きそうだね。',
+                      ),
+                      (
+                        message: '${latestExpense.storeName}、一撃来たね',
+                        subMessage: 'いい買い物かもしれないよ。ただここからは少し慎重でもよさそうだよ。',
                       ),
                     ])
-                  : _pickVariant('latest_luxury_fit', [
-                      (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '今のところは予算の範囲で把握できています。',
-                      ),
-                      (
-                        message: '${latestExpense.storeName}での支出を記録しました。',
-                        subMessage: '大きめの支出でも、見える化できていればかなり違います。',
-                      ),
-                      (
-                        message: '${latestExpense.storeName}を確認しました。',
-                        subMessage: '今はまず、把握できていること自体がかなり良い状態です。',
-                      ),
-                    ]);
+              : ruleResult?.paceStatus == PaceStatus.warning
+                  ? _pickVariant('latest_luxury_warning_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} stands out a bit',
+                            subMessage: 'Not risky yet, but the wallet is noticing this.',
+                          ),
+                          (
+                            message: 'A slightly heavy move',
+                            subMessage: 'Watching the pace now could make the rest easier.',
+                          ),
+                          (
+                            message: '${latestExpense.storeName} looks like a good pick',
+                            subMessage: 'Satisfying, just worth keeping an eye on the budget side.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、存在感あるね',
+                            subMessage: 'まだ危険ではないよ。ただ財布はちゃんと反応してるね。',
+                          ),
+                          (
+                            message: 'ちょっと強めの一手だね',
+                            subMessage: '今のうちにペースを見ておくと、後半かなり楽になるよ。',
+                          ),
+                          (
+                            message: '${latestExpense.storeName}、いいやつ買ったね',
+                            subMessage: '満足感はありそうだね。予算面では少しだけ見ておきたいところだよ。',
+                          ),
+                        ])
+                  : _pickVariant('latest_luxury_fit_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} noted',
+                            subMessage: 'A bigger spend, but still clearly visible and under control.',
+                          ),
+                          (
+                            message: '${latestExpense.storeName} has presence',
+                            subMessage: 'Tracking these clearly is what keeps the balance healthy.',
+                          ),
+                          (
+                            message: 'Looks like a good buy',
+                            subMessage: 'For now, everything still feels balanced.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、見えてるね',
+                            subMessage: '大きめの支出も見えてるね。今のところは落ち着いて見られるよ。',
+                          ),
+                          (
+                            message: '${latestExpense.storeName}、存在感あるね',
+                            subMessage: 'こういう一手も見える化できてるの、かなり大事だね。',
+                          ),
+                          (
+                            message: 'いい買い物っぽいね',
+                            subMessage: '今はまず、ちゃんと把握できてるのがいい状態だよ。',
+                          ),
+                        ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_luxury',
+        scenarioKey: 'latest_luxury_$lang',
         notificationBody: judge.shouldNotify
-            ? '${latestExpense.storeName}で高級品寄りの支出を記録しました。'
+            ? _t(
+                lang,
+                '${latestExpense.storeName}で少し大きめの支出を確認したよ。',
+                '${latestExpense.storeName} premium spending noted.',
+              )
             : '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2348,20 +3700,38 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     }
 
     else if (judge.tags.contains(ExpenseJudgeTag.sensitive)) {
-      final variant = _pickVariant('latest_sensitive', [
-        (
-          message: '${latestExpense.storeName}での支出を記録しました。',
-          subMessage: '今回は内容に踏み込まず、静かに記録だけしておきます。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: 'ここは強く触れず、落ち着いて記録だけ残しておきます。',
-        ),
-        (
-          message: '${latestExpense.storeName}での記録を確認しました。',
-          subMessage: '今回はコメントを控えめにして、静かに見守ります。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_sensitive_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName}, noted quietly',
+                  subMessage: 'This is something to keep on record, without going deeper.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is visible',
+                  subMessage: 'No need to say much here. Just keeping it quietly in view.',
+                ),
+                (
+                  message: '${latestExpense.storeName}, leaving it as is',
+                  subMessage: 'Not everything needs a comment. This one stays gently recorded.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、静かに残しておくね',
+                  subMessage: 'ここは深く触れないでおくよ。記録だけそっと置いておくね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、見えてるよ',
+                  subMessage: '今回は多くは言わない。静かに置いておくね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、だね',
+                  subMessage: 'ここは踏み込まないでおくよ。そっと見守っておくね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
         scenarioKey: 'latest_sensitive',
@@ -2373,69 +3743,133 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     else if (judge.tags.contains(ExpenseJudgeTag.cafe)) {
       final variant = ruleResult?.categoryFit == CategoryFit.mismatch
-          ? _pickVariant('latest_cafe_mismatch', [
-              (
-                message: '${latestExpense.storeName}、急な出費に入っていますね。',
-                subMessage: 'カフェ系の支出は、分けておくとかなり見やすくなります。',
-              ),
-              (
-                message: '${latestExpense.storeName}が${latestExpense.category}に入っています。',
-                subMessage: '少しカテゴリが広めなので、見直すと管理しやすくなりそうです。',
-              ),
-              (
-                message: '${latestExpense.storeName}、今回は${latestExpense.category}扱いなんですね。',
-                subMessage: 'カフェとして分けると、使い方の傾向がもっと見えやすくなります。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.danger ||
-                  ruleResult?.paceStatus == PaceStatus.over
-              ? _pickVariant('latest_cafe_danger', [
+          ? _pickVariant('latest_cafe_mismatch_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: 'カフェ予算のペースがかなり速めです。ここからは少し慎重にいきたいところです。',
+                    message: '${latestExpense.storeName} feels like a cafe stop',
+                    subMessage: 'It is under ${latestExpense.category}. Splitting it out can make your habits much clearer.',
                   ),
                   (
-                    message: '${latestExpense.storeName}、見えています。',
-                    subMessage: 'カフェ枠がかなり減ってきています。後半に響きそうです。',
+                    message: '${latestExpense.storeName} might be grouped too broadly',
+                    subMessage: 'Keeping cafe spending separate helps reveal the flow.',
                   ),
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '楽しめてはいますが、今のペースだと上限がかなり近いです。',
+                    message: '${latestExpense.storeName} leans cafe',
+                    subMessage: 'Separating this can make your patterns easier to see later.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、カフェ枠っぽいね',
+                    subMessage: '${latestExpense.category}に入ってるよ。分けておくと、あとでかなり見やすいよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、ちょっと広めに入ってるね',
+                    subMessage: 'カフェは分けておくと、流れがかなり見えるようになるよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、カフェ寄りだね',
+                    subMessage: 'ちゃんと分けると、使い方のクセも見えてくるよ。',
                   ),
                 ])
-              : ruleResult?.paceStatus == PaceStatus.warning
-                  ? _pickVariant('latest_cafe_warning', [
+          : ruleResult?.paceStatus == PaceStatus.danger ||
+                  ruleResult?.paceStatus == PaceStatus.over
+              ? _pickVariant('latest_cafe_danger_$lang', isEn
+                  ? [
                       (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '今のところは大丈夫ですが、カフェ予算は少し早めのペースです。',
+                        message: '${latestExpense.storeName} cafe stop',
+                        subMessage: 'Relaxing, but this pace is starting to weigh on the wallet.',
                       ),
                       (
-                        message: '${latestExpense.storeName}、今日もカフェ気分ですね。',
-                        subMessage: 'まだ余裕はありますが、少しずつ効いてきそうです。',
+                        message: 'Cafe visits are adding up',
+                        subMessage: 'Each one feels light, but together they are building a pattern.',
                       ),
                       (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '後半を楽にするなら、ここで少しだけ抑えるのもありです。',
+                        message: 'That cup is stacking now',
+                        subMessage: 'Individually small, but clearly noticeable at this point.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、カフェだね',
+                        subMessage: 'ちょっとペース速いね。このままだと、財布にじわっと効いてくるよ。',
+                      ),
+                      (
+                        message: 'カフェ、来てるね',
+                        subMessage: 'リラックスは大事だね。ただ今月は少し前のめりな流れだよ。',
+                      ),
+                      (
+                        message: 'その一杯、重なってきてるね',
+                        subMessage: '一回は軽いけど、ここまで来るとちゃんと効いてるよ。',
                       ),
                     ])
-                  : _pickVariant('latest_cafe_fit', [
-                      (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '今のところは予算の範囲で楽しめています。',
-                      ),
-                      (
-                        message: '${latestExpense.storeName}、今日はカフェ気分だったんですね。',
-                        subMessage: 'ちゃんと把握できているので、今のところは落ち着いて見られます。',
-                      ),
-                      (
-                        message: '${latestExpense.storeName}での支出を記録しました。',
-                        subMessage: '予算の中で楽しめているなら、そこまで強く言う場面ではなさそうです。',
-                      ),
-                    ]);
+              : ruleResult?.paceStatus == PaceStatus.warning
+                  ? _pickVariant('latest_cafe_warning_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} cafe time',
+                            subMessage: 'Still fine, but the pace is starting to show a bit.',
+                          ),
+                          (
+                            message: 'Cafe flow is forming',
+                            subMessage: 'This could build up later if it keeps going like this.',
+                          ),
+                          (
+                            message: 'A cafe kind of day',
+                            subMessage: 'Light spending, but repetition is what matters here.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、カフェだね',
+                            subMessage: 'まだ大丈夫だよ。ただ少しペースは出てきてるね。',
+                          ),
+                          (
+                            message: 'カフェ、いい流れだね',
+                            subMessage: 'このままいくと後半ちょっと効いてきそうだね。今のうちに見ておくといいよ。',
+                          ),
+                          (
+                            message: '今日はカフェ気分だね',
+                            subMessage: '軽い支出でも、積み重なるとちゃんと残るタイプだよ。',
+                          ),
+                        ])
+                  : _pickVariant('latest_cafe_fit_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} cafe time',
+                            subMessage: 'Nice balance so far. Still under control.',
+                          ),
+                          (
+                            message: 'A good cafe break',
+                            subMessage: 'Spending like this is easy to enjoy when it stays visible.',
+                          ),
+                          (
+                            message: 'That cup looks right',
+                            subMessage: 'Everything still feels balanced at this pace.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、カフェだね',
+                            subMessage: 'ちゃんと楽しめてるね。今のところはいいバランスだよ。',
+                          ),
+                          (
+                            message: 'カフェ、いい使い方だね',
+                            subMessage: 'こういう支出も見えてるのがいいね。ちゃんとコントロールできてるよ。',
+                          ),
+                          (
+                            message: 'その一杯、いい時間だね',
+                            subMessage: '今は余裕あるね。このまま気持ちよくいけそうだよ。',
+                          ),
+                        ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_cafe',
-        notificationBody: '☕ ${latestExpense.storeName} の支出を記録しました。',
+        scenarioKey: 'latest_cafe_$lang',
+        notificationBody: _t(
+          lang,
+          '☕ ${latestExpense.storeName} の支出を確認したよ。',
+          '☕ ${latestExpense.storeName} cafe spending noted.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -2443,69 +3877,133 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     else if (judge.tags.contains(ExpenseJudgeTag.convenience)) {
       final variant = ruleResult?.categoryFit == CategoryFit.mismatch
-          ? _pickVariant('latest_convenience_mismatch', [
-              (
-                message: '${latestExpense.storeName}、${latestExpense.category}に入っていますね。',
-                subMessage: 'コンビニ支出は見えにくくなりやすいので、分けるとかなり把握しやすくなります。',
-              ),
-              (
-                message: '${latestExpense.storeName}が急な出費に入りがちですね。',
-                subMessage: 'ここが見えるようになると、使い方の傾向がかなり分かりやすくなります。',
-              ),
-              (
-                message: '${latestExpense.storeName}、カテゴリが少し広めです。',
-                subMessage: 'コンビニ系を分けると、予算の減り方がもっと見やすくなりそうです。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.danger ||
-                  ruleResult?.paceStatus == PaceStatus.over
-              ? _pickVariant('latest_convenience_danger', [
+          ? _pickVariant('latest_convenience_mismatch_$lang', isEn
+              ? [
                   (
-                    message: '${latestExpense.storeName}ですね。',
-                    subMessage: '予算が減ってきている中でコンビニ比率が高めです。後半が少し心配です。',
+                    message: '${latestExpense.storeName} feels like a convenience stop',
+                    subMessage: 'It is under ${latestExpense.category}. Splitting this out can make your habits much clearer.',
                   ),
                   (
-                    message: 'またコンビニですね。',
-                    subMessage: '今のペースだと、手軽さがそのまま予算に響いてきそうです。',
+                    message: '${latestExpense.storeName} might be grouped too broadly',
+                    subMessage: 'Separating convenience spending helps reveal frequency and flow.',
                   ),
                   (
-                    message: '${latestExpense.storeName}を確認しました。',
-                    subMessage: '食費の中でもコンビニ寄りが続いていて、少し厳しめの流れです。',
+                    message: '${latestExpense.storeName} leans convenience',
+                    subMessage: 'This is easier to track when it stands on its own.',
+                  ),
+                ]
+              : [
+                  (
+                    message: '${latestExpense.storeName}、コンビニ枠っぽいね',
+                    subMessage: '${latestExpense.category}に入ってるよ。分けておくと、あとでかなり見やすいよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、ちょっと広めに入ってるね',
+                    subMessage: 'コンビニは分けると、回数と流れがかなり見えるようになるよ。',
+                  ),
+                  (
+                    message: '${latestExpense.storeName}、コンビニ寄りだね',
+                    subMessage: 'ここを分けると、使い方のクセがはっきり出てくるよ。',
                   ),
                 ])
-              : ruleResult?.paceStatus == PaceStatus.warning
-                  ? _pickVariant('latest_convenience_warning', [
+          : ruleResult?.paceStatus == PaceStatus.danger ||
+                  ruleResult?.paceStatus == PaceStatus.over
+              ? _pickVariant('latest_convenience_danger_$lang', isEn
+                  ? [
                       (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '今のところ予算内ですが、コンビニ比率は少し高めです。',
+                        message: '${latestExpense.storeName} again',
+                        subMessage: 'Easy stops are stacking up. At this pace, it is clearly hitting the budget.',
                       ),
                       (
-                        message: 'またコンビニですね。',
-                        subMessage: 'まだ大丈夫ですが、回数が増えるとじわじわ効いてきます。',
+                        message: 'Convenience visits are adding up',
+                        subMessage: 'Each one is small, but together they are leaving a mark.',
                       ),
                       (
-                        message: '${latestExpense.storeName}での支出を確認しました。',
-                        subMessage: '食費の使い方としては少し手軽寄りかもしれません。',
+                        message: 'That quick stop is not so light now',
+                        subMessage: 'Small by itself, but repetition is doing the damage.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: '${latestExpense.storeName}、また来たね',
+                        subMessage: '今のペースだと、手軽さがそのまま予算に強めに効いてるよ。',
+                      ),
+                      (
+                        message: 'コンビニ、来てるね',
+                        subMessage: '一回は軽いね。ただここまで来ると、ちゃんと重なってるよ。',
+                      ),
+                      (
+                        message: 'その一手、地味に効くやつだね',
+                        subMessage: '小さいけど回数で来るタイプだよ。ここは少し流れ見たいところだね。',
                       ),
                     ])
-                  : _pickVariant('latest_convenience_fit', [
-                      (
-                        message: '${latestExpense.storeName}ですね。',
-                        subMessage: '今のところは予算の範囲で収まっています。',
-                      ),
-                      (
-                        message: '${latestExpense.storeName}での支出を確認しました。',
-                        subMessage: '普段の食費として使っているなら、今は大きく責める場面ではなさそうです。',
-                      ),
-                      (
-                        message: 'コンビニ支出を記録しました。',
-                        subMessage: '予算内で管理できているなら、まずは把握できているのが大事です。',
-                      ),
-                    ]);
+              : ruleResult?.paceStatus == PaceStatus.warning
+                  ? _pickVariant('latest_convenience_warning_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} stop',
+                            subMessage: 'Still fine, but the frequency is starting to show.',
+                          ),
+                          (
+                            message: 'Convenience flow is forming',
+                            subMessage: 'This could build up later if it keeps going like this.',
+                          ),
+                          (
+                            message: 'Another quick stop',
+                            subMessage: 'Easy spending like this tends to accumulate quietly.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、コンビニだね',
+                            subMessage: 'まだ大丈夫だよ。ただ回数は少し出てきてるよ。',
+                          ),
+                          (
+                            message: 'コンビニ、いい流れだね',
+                            subMessage: 'このままいくと後半じわっと効いてきそうだね。今のうちに見ておくといいよ。',
+                          ),
+                          (
+                            message: 'また寄ったね',
+                            subMessage: '手軽さは強いね。積み重なるとしっかり残るタイプだよ。',
+                          ),
+                        ])
+                  : _pickVariant('latest_convenience_fit_$lang', isEn
+                      ? [
+                          (
+                            message: '${latestExpense.storeName} stop',
+                            subMessage: 'Still balanced. Small moves like this are fine when visible.',
+                          ),
+                          (
+                            message: 'A quick stop there',
+                            subMessage: 'Easy spending, but still under control right now.',
+                          ),
+                          (
+                            message: 'That was a light move',
+                            subMessage: 'Everything still feels manageable at this pace.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: '${latestExpense.storeName}、コンビニだね',
+                            subMessage: '今のところはバランス取れてるね。ちゃんと見えてるのがいいよ。',
+                          ),
+                          (
+                            message: 'コンビニ、いい使い方だね',
+                            subMessage: 'こういう支出も見える化できてるの、かなり大事だね。',
+                          ),
+                          (
+                            message: 'その一手、軽やかだね',
+                            subMessage: '今は余裕あるね。このまま流れ見ていけそうだよ。',
+                          ),
+                        ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_convenience',
-        notificationBody: '🏪 コンビニ支出を記録しました。',
+        scenarioKey: 'latest_convenience_$lang',
+        notificationBody: _t(
+          lang,
+          '🏪 ${latestExpense.storeName} の支出を確認したよ。',
+          '🏪 ${latestExpense.storeName} convenience spending noted.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -2513,77 +4011,149 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     else if (judge.tags.contains(ExpenseJudgeTag.dining)) {
       final variant = ruleResult?.categoryFit == CategoryFit.mismatch
-          ? _pickVariant('latest_dining_mismatch', [
-              (
-                message: latestIsWeekend
-                    ? '週末外食っぽい支出ですね。'
-                    : 'その支出、かなり外食寄りです。',
-                subMessage: 'ただ、カテゴリは少し広めです。外食として分けると食費との違いがかなり見えやすくなります。',
-              ),
-              (
-                message: '食べに出た感じはかなり伝わります。',
-                subMessage: '急な出費より、外食として分けた方が使い方の流れを追いやすいです。',
-              ),
-              (
-                message: '外食なのにカテゴリだけ少し曖昧ですね。',
-                subMessage: '意味が見えるように分けておくと、予算管理がかなり楽になります。',
-              ),
-            ])
-          : ruleResult?.paceStatus == PaceStatus.danger ||
-                  ruleResult?.paceStatus == PaceStatus.over
-              ? _pickVariant('latest_dining_danger', [
+          ? _pickVariant('latest_dining_mismatch_$lang', isEn
+              ? [
                   (
                     message: latestIsWeekend
-                        ? '週末外食、今月は少し重ためです。'
-                        : '外食としては自然ですが、今月の流れが少し強めです。',
-                    subMessage: 'カテゴリは合っています。ただ、外食枠の進み方はかなり速めです。満足感のぶん、予算にもちゃんと出ています。',
+                        ? 'Looks like a weekend meal out'
+                        : 'This feels like dining out',
+                    subMessage: 'It is under ${latestExpense.category}. Separating dining from groceries can make the month much easier to read.',
                   ),
                   (
-                    message: 'おいしい日の流れ、ありますね。',
-                    subMessage: '記録は自然です。ただ、カテゴリ予算の減り方としては少し前のめりです。',
+                    message: 'This has meal-out energy',
+                    subMessage: 'It may be easier to track as dining rather than a broad expense.',
                   ),
                   (
-                    message: '食べる方の満足感は高そうです。',
-                    subMessage: 'カテゴリはぴったりですが、今月ペースとしては慎重に見ておきたいところです。',
+                    message: 'Dining out looks a bit mixed in',
+                    subMessage: 'Putting it where the meaning is clear helps the wallet read the flow later.',
+                  ),
+                ]
+              : [
+                  (
+                    message: latestIsWeekend
+                        ? '週末外食っぽいね'
+                        : 'これ、外食寄りだね',
+                    subMessage: '${latestExpense.category}に入ってるよ。外食で分けると、食費との違いがかなり見やすいよ。',
+                  ),
+                  (
+                    message: '食べに出た感じあるね',
+                    subMessage: '急な出費より、外食として置いた方が流れを追いやすいよ。',
+                  ),
+                  (
+                    message: '外食っぽいのに少し曖昧だね',
+                    subMessage: '意味が見える場所に置いておくと、あとで財布も助かるよ。',
                   ),
                 ])
-              : ruleResult?.paceStatus == PaceStatus.warning
-                  ? _pickVariant('latest_dining_warning', [
+          : ruleResult?.paceStatus == PaceStatus.danger ||
+                  ruleResult?.paceStatus == PaceStatus.over
+              ? _pickVariant('latest_dining_danger_$lang', isEn
+                  ? [
                       (
                         message: latestIsWeekend
-                            ? '週末外食、かなりそれっぽいですね。'
-                            : '今日は外食気分だったんですね。',
-                        subMessage: 'カテゴリは合っています。ただ、外食枠は少し早めのペースです。',
+                            ? 'Weekend dining is getting heavy'
+                            : 'Dining out is coming in strong',
+                        subMessage: 'Good food is valid. The dining pace, though, is moving pretty fast.',
                       ),
                       (
-                        message: 'その支出、かなり外食らしいです。',
-                        subMessage: '記録はきれいです。ペース面だけ少し意識しておくと後半がかなり楽です。',
+                        message: 'Looks like a good meal day',
+                        subMessage: 'The satisfaction is probably high. The budget is leaning forward a bit too.',
                       ),
                       (
-                        message: '楽しみ方としては自然です。',
-                        subMessage: 'カテゴリ適合はきれいですが、今月の進み方としては少し存在感が出ています。',
+                        message: 'Dining out is starting to hit',
+                        subMessage: 'Enjoyable, but the footprint is clearly showing now. Pacing from here might help.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: latestIsWeekend
+                            ? '週末外食、重めだね'
+                            : '外食、流れ強めだね',
+                        subMessage: 'おいしいのは正義だね。ただ外食枠の進み方はかなり速いよ。',
+                      ),
+                      (
+                        message: 'おいしい日の流れだね',
+                        subMessage: '満足度は高そうだよ。ただ予算の減り方は少し前のめりだね。',
+                      ),
+                      (
+                        message: '外食、効いてきてるね',
+                        subMessage: '楽しさのぶん、財布にもちゃんと残ってるよ。ここからは少し慎重でもいいね。',
                       ),
                     ])
-                  : _pickVariant('latest_dining_fit', [
-                      (
-                        message: latestIsWeekend
-                            ? '週末に外で食べる感じ、いいですね。'
-                            : '今日は外食の日だったんですね。',
-                        subMessage: 'カテゴリも自然ですし、今のところは予算の範囲で楽しめています。',
-                      ),
-                      (
-                        message: 'その支出、かなり外食らしく記録できています。',
-                        subMessage: '食費と分けて見やすく残せているのがかなり良いです。',
-                      ),
-                      (
-                        message: '食べに出る日の空気、ちゃんと出ています。',
-                        subMessage: 'カテゴリは合っていますし、今はまだ落ち着いて見られるペースです。',
-                      ),
-                    ]);
+              : ruleResult?.paceStatus == PaceStatus.warning
+                  ? _pickVariant('latest_dining_warning_$lang', isEn
+                      ? [
+                          (
+                            message: latestIsWeekend
+                                ? 'Weekend meal out, makes sense'
+                                : 'Looks like a dining-out day',
+                            subMessage: 'The category fits. The dining pace is just starting to show a little.',
+                          ),
+                          (
+                            message: 'A proper meal-out move',
+                            subMessage: 'Cleanly tracked. Keeping an eye on the pace now can make the second half easier.',
+                          ),
+                          (
+                            message: 'A natural way to enjoy the day',
+                            subMessage: 'Good spending if it fits the month. It is starting to have some presence though.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestIsWeekend
+                                ? '週末外食、それっぽいね'
+                                : '今日は外食気分だね',
+                            subMessage: 'カテゴリは合ってるよ。ただ外食枠は少しペース出てきてるよ。',
+                          ),
+                          (
+                            message: '外食らしい一手だね',
+                            subMessage: '記録はきれいだよ。ペースだけ少し見ておくと後半かなり楽だね。',
+                          ),
+                          (
+                            message: '楽しみ方としては自然だね',
+                            subMessage: 'いい使い方だよ。ただ今月の流れとしては少し存在感出てきたよ。',
+                          ),
+                        ])
+                  : _pickVariant('latest_dining_fit_$lang', isEn
+                      ? [
+                          (
+                            message: latestIsWeekend
+                                ? 'Weekend meal out sounds right'
+                                : 'Looks like a dining-out day',
+                            subMessage: 'The category fits. So far, this is still a balanced way to enjoy the month.',
+                          ),
+                          (
+                            message: 'Dining out is nicely separated',
+                            subMessage: 'Keeping it apart from groceries makes the wallet much easier to read.',
+                          ),
+                          (
+                            message: 'Good meal-out energy',
+                            subMessage: 'At this pace, it still feels calm enough to enjoy.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestIsWeekend
+                                ? '週末に外で食べるの、いいね'
+                                : '今日は外食の日だね',
+                            subMessage: 'カテゴリも自然だよ。今のところは予算内で楽しめてるね。',
+                          ),
+                          (
+                            message: '外食として見えてるね',
+                            subMessage: '食費と分けて見えてるの、かなりいいよ。財布も追いやすい。',
+                          ),
+                          (
+                            message: '食べに出る日の空気だね',
+                            subMessage: '今はまだ落ち着いて見られるペースだよ。このまま楽しめそうだね。',
+                          ),
+                        ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_dining',
-        notificationBody: '🍜 ${latestExpense.storeName} の支出を記録しました。',
+        scenarioKey: 'latest_dining_$lang',
+        notificationBody: _t(
+          lang,
+          '🍜 ${latestExpense.storeName} の支出を確認したよ。',
+          '🍜 ${latestExpense.storeName} dining spending noted.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -2592,138 +4162,267 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     else if (_isOnlineShopping(latestExpense)) {
       final isHeavyHitOnline =
           onlineShoppingCount <= 2 && latestOnlineShoppingAverage >= 5000;
+      final onlineAverageText = _formatMoney(latestOnlineShoppingAverage, lang);
 
       final variant = ruleResult?.paceStatus == PaceStatus.danger ||
               ruleResult?.paceStatus == PaceStatus.over
           ? isHeavyHitOnline
-              ? _pickVariant('latest_online_shopping_heavy_danger', [
-                  (
-                    message: latestTimeTone == 'late_night'
-                        ? '深夜に大きめのポチり、来ましたね。'
-                        : '今回は一撃重めの買い方ですね。',
-                    subMessage: 'カテゴリは合っていますが、今月の通販枠としてはかなり強めです。1回あたり約${latestOnlineShoppingAverage}円で、予算への効き方も大きめです。',
-                  ),
-                  (
-                    message: '指先の軽さに対して、金額は軽くないです。',
-                    subMessage: '記録は自然です。ただ、カテゴリ予算の進み方としてはかなり前のめりです。',
-                  ),
-                  (
-                    message: '届く前から存在感がある支出ですね。',
-                    subMessage: 'カテゴリはぴったりですが、今月ペースとしては慎重に見ておきたいところです。',
-                  ),
-                ])
-              : _pickVariant('latest_online_shopping_repeat_danger', [
-                  (
-                    message: latestTimeTone == 'late_night'
-                        ? '深夜ポチりの流れ、今月はかなり出ています。'
-                        : '通販の回数が今月しっかり効いています。',
-                    subMessage: 'カテゴリは合っていますが、今月の通販枠はかなり速めです。便利さの反復が予算に強く出ています。',
-                  ),
-                  (
-                    message: '気づいたら届く流れが続いていますね。',
-                    subMessage: '記録は自然です。ただ、カテゴリ予算の減り方としては少し厳しめです。',
-                  ),
-                  (
-                    message: 'その買い方、今月は少し前のめりです。',
-                    subMessage: 'カテゴリはぴったりです。今の通販ペースは慎重に見ておきたいところです。',
-                  ),
-                ])
+              ? _pickVariant('latest_online_shopping_heavy_danger_$lang', isEn
+                  ? [
+                      (
+                        message: latestTimeTone == 'late_night'
+                            ? 'Late-night cart hit hard'
+                            : 'Online shopping hit hard',
+                        subMessage: 'The category fits, but about $onlineAverageText per order is hitting the wallet pretty strongly.',
+                      ),
+                      (
+                        message: 'Your finger was light',
+                        subMessage: 'The amount was not. Online shopping is leaning forward this month.',
+                      ),
+                      (
+                        message: 'It has presence before it even arrives',
+                        subMessage: 'The category is right. From here, slowing the pace may help.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: latestTimeTone == 'late_night'
+                            ? '深夜に大きめポチりだね'
+                            : '通販、一撃重めだね',
+                        subMessage: 'カテゴリは合ってるよ。ただ1回あたり約$onlineAverageText、財布にはかなり強めに効いてるよ。',
+                      ),
+                      (
+                        message: '指先は軽いね',
+                        subMessage: 'でも金額は軽くないよ。今月の通販枠、だいぶ前のめりだね。',
+                      ),
+                      (
+                        message: '届く前から存在感あるね',
+                        subMessage: 'カテゴリはぴったりだよ。ただここからは少し慎重でもよさそうだね。',
+                      ),
+                    ])
+              : _pickVariant('latest_online_shopping_repeat_danger_$lang', isEn
+                  ? [
+                      (
+                        message: latestTimeTone == 'late_night'
+                            ? 'Late-night orders are becoming a flow'
+                            : 'Online orders are adding up',
+                        subMessage: 'The category fits. Convenience is clearly showing up in the budget now.',
+                      ),
+                      (
+                        message: 'Things keep arriving',
+                        subMessage: 'The tracking is clean, but the online shopping pace is getting tight.',
+                      ),
+                      (
+                        message: 'This buying rhythm is leaning forward',
+                        subMessage: 'The category is right. This month’s online shopping pace is worth watching.',
+                      ),
+                    ]
+                  : [
+                      (
+                        message: latestTimeTone == 'late_night'
+                            ? '深夜ポチり、流れ出てるね'
+                            : '通販、回数で来てるね',
+                        subMessage: 'カテゴリは合ってるよ。便利さの反復が予算にしっかり出てるよ。',
+                      ),
+                      (
+                        message: '気づいたら届く流れだね',
+                        subMessage: '記録は自然だよ。ただ通販枠の減り方は少し厳しめだね。',
+                      ),
+                      (
+                        message: 'その買い方、前のめりだね',
+                        subMessage: 'カテゴリはぴったりだよ。今月の通販ペースは少し見ておきたいね。',
+                      ),
+                    ])
           : ruleResult?.paceStatus == PaceStatus.warning
               ? isHeavyHitOnline
-                  ? _pickVariant('latest_online_shopping_heavy_warning', [
-                      (
-                        message: latestTimeTone == 'late_night'
-                            ? '夜にちょっと大きめの買い物でしたね。'
-                            : '今回は単発の重みが少し出ていますね。',
-                        subMessage: 'カテゴリは合っています。ただ、1回あたり約${latestOnlineShoppingAverage}円で、今月の通販枠としては少し存在感があります。',
-                      ),
-                      (
-                        message: '回数は少なくても、金額はちゃんと前に出ています。',
-                        subMessage: '記録はきれいです。ペース面だけ、少し意識しておくと後半が楽です。',
-                      ),
-                      (
-                        message: 'ポチりというより、しっかり買った日ですね。',
-                        subMessage: 'カテゴリ適合は自然です。今のうちに少し整えるとかなり楽になります。',
-                      ),
-                    ])
-                  : _pickVariant('latest_online_shopping_repeat_warning', [
-                      (
-                        message: latestTimeTone == 'late_night'
-                            ? '夜ポチの流れ、少し出てきていますね。'
-                            : '通販の回数が今月ちょっと目立ってきましたね。',
-                        subMessage: 'カテゴリは合っています。ただ、通販枠は少し早めのペースです。',
-                      ),
-                      (
-                        message: '一回ごとは軽めでも、回数が効いてきています。',
-                        subMessage: '記録はきれいです。ペース面だけ少し意識しておくと後半がかなり楽です。',
-                      ),
-                      (
-                        message: '届く系の支出、今月は少し存在感があります。',
-                        subMessage: 'カテゴリ適合はきれいですが、今月の進み方としては少し前に出ています。',
-                      ),
-                    ])
+                  ? _pickVariant('latest_online_shopping_heavy_warning_$lang', isEn
+                      ? [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? 'A larger night purchase'
+                                : 'That one had weight',
+                            subMessage: 'The category fits. About $onlineAverageText per order has real presence for online shopping.',
+                          ),
+                          (
+                            message: 'Not many orders, but still heavy',
+                            subMessage: 'The amount is stepping forward. Watching the pace now can make the rest easier.',
+                          ),
+                          (
+                            message: 'More than just a quick tap',
+                            subMessage: 'The category is natural. A little adjustment now could help later.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? '夜に大きめ買い物だね'
+                                : '単発の重み、出てるね',
+                            subMessage: 'カテゴリは合ってるよ。1回あたり約$onlineAverageText、通販枠では存在感あるよ。',
+                          ),
+                          (
+                            message: '回数は少ないね',
+                            subMessage: 'でも金額は前に出てるよ。ペースだけ見ておくと後半楽だね。',
+                          ),
+                          (
+                            message: 'ポチりというより、しっかり買った日だね',
+                            subMessage: 'カテゴリは自然だよ。今のうちに少し整えると楽になりそうだね。',
+                          ),
+                        ])
+                  : _pickVariant('latest_online_shopping_repeat_warning_$lang', isEn
+                      ? [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? 'Night orders are starting to show'
+                                : 'Online order frequency is showing',
+                            subMessage: 'The category fits. Online shopping is moving a little fast.',
+                          ),
+                          (
+                            message: 'Each order may be light',
+                            subMessage: 'But the frequency is starting to matter. Worth watching for the second half.',
+                          ),
+                          (
+                            message: 'The delivery trail is getting visible',
+                            subMessage: 'The category is clean. The month’s flow is just starting to lean forward.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? '夜ポチ、少し流れ出てるね'
+                                : '通販の回数、目立ってきたね',
+                            subMessage: 'カテゴリは合ってるよ。ただ通販枠は少し早めのペースだね。',
+                          ),
+                          (
+                            message: '一回ごとは軽めだね',
+                            subMessage: 'でも回数で効いてきてるよ。後半のために少し見ておきたいね。',
+                          ),
+                          (
+                            message: '届く系、存在感出てきたね',
+                            subMessage: 'カテゴリはきれいだよ。ただ今月の流れとしては少し前に出てるね。',
+                          ),
+                        ])
               : isHeavyHitOnline
-                  ? _pickVariant('latest_online_shopping_heavy_fit', [
-                      (
-                        message: latestTimeTone == 'late_night'
-                            ? '夜にしっかり買い物した日だったんですね。'
-                            : '今回は少回数でも重みのある買い方ですね。',
-                        subMessage: 'カテゴリも自然ですし、今のところは予算の範囲で見られています。ただ、1回あたり約${latestOnlineShoppingAverage}円で一撃の存在感はあります。',
-                      ),
-                      (
-                        message: 'その支出、かなり“買った感”があります。',
-                        subMessage: '通販として見やすく記録できています。回数は少なくても、単価はしっかりめです。',
-                      ),
-                      (
-                        message: '指先が軽い日というより、ちゃんと選んだ日ですね。',
-                        subMessage: 'カテゴリは合っていますし、今はまだ落ち着いて見られるペースです。',
-                      ),
-                    ])
-                  : _pickVariant('latest_online_shopping_repeat_fit', [
-                      (
-                        message: latestTimeTone == 'late_night'
-                            ? '夜ポチ、今日はそういう日だったんですね。'
-                            : '通販の使い方としてはかなり自然です。',
-                        subMessage: 'カテゴリも合っていますし、今のところは予算の範囲で見られています。',
-                      ),
-                      (
-                        message: 'その支出、かなり通販らしく記録できています。',
-                        subMessage: '届く系の支出として見やすく残せています。',
-                      ),
-                      (
-                        message: '気づいたら届く側の使い方、ちゃんと出ています。',
-                        subMessage: 'カテゴリは合っていますし、今はまだ落ち着いて見られるペースです。',
-                      ),
-                    ]);
+                  ? _pickVariant('latest_online_shopping_heavy_fit_$lang', isEn
+                      ? [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? 'A solid night purchase'
+                                : 'Online shopping, clearly chosen',
+                            subMessage: 'The category fits. Still within budget, though the single-order weight is visible.',
+                          ),
+                          (
+                            message: 'That was a proper purchase',
+                            subMessage: 'It is easy to read as online shopping. Low frequency, but solid unit price.',
+                          ),
+                          (
+                            message: 'Not just a light tap today',
+                            subMessage: 'Looks like a chosen purchase. The pace is still calm for now.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? '夜にしっかり買った日だね'
+                                : '通販、ちゃんと選んだ日だね',
+                            subMessage: 'カテゴリも自然だよ。今は予算内で見られてるけど、一撃の存在感はあるね。',
+                          ),
+                          (
+                            message: 'かなり買った感あるね',
+                            subMessage: '通販として見やすく残せてるよ。回数は少なくても単価はしっかりめだね。',
+                          ),
+                          (
+                            message: '指先が軽い日じゃないね',
+                            subMessage: 'ちゃんと選んだ日だね。今はまだ落ち着いて見られるペースだね。',
+                          ),
+                        ])
+                  : _pickVariant('latest_online_shopping_repeat_fit_$lang', isEn
+                      ? [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? 'Night shopping, that kind of day'
+                                : 'Online shopping fits here',
+                            subMessage: 'The category fits. So far, this is still within a manageable pace.',
+                          ),
+                          (
+                            message: 'Online spending is clearly placed',
+                            subMessage: 'Delivery-type spending is easy to follow when it is separated like this.',
+                          ),
+                          (
+                            message: 'The delivery side of the month',
+                            subMessage: 'The category fits. For now, the pace still looks calm.',
+                          ),
+                        ]
+                      : [
+                          (
+                            message: latestTimeTone == 'late_night'
+                                ? '夜ポチ、そういう日だね'
+                                : '通販として自然だね',
+                            subMessage: 'カテゴリも合ってるよ。今のところは予算内で見られてるね。',
+                          ),
+                          (
+                            message: '通販として見えてるね',
+                            subMessage: '届く系の支出として見やすく残せてるよ。財布も追いやすいね。',
+                          ),
+                          (
+                            message: '気づいたら届く側だね',
+                            subMessage: 'カテゴリは合ってるよ。今はまだ落ち着いて見られるペースだね。',
+                          ),
+                        ]);
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_online_shopping',
-        notificationBody: '🛒 ${latestExpense.storeName} の支出を記録しました。',
+        scenarioKey: 'latest_online_shopping_$lang',
+        notificationBody: _t(
+          lang,
+          '🛒 ${latestExpense.storeName} の支出を確認したよ。',
+          '🛒 ${latestExpense.storeName} online shopping noted.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
     }
 
     else if (judge.tags.contains(ExpenseJudgeTag.hobby)) {
-      final variant = _pickVariant('latest_hobby', [
-        (
-          message: '${latestExpense.storeName}での支出ですね。',
-          subMessage: '趣味の出費は満足感がありますが、回数が増えると効いてきます。',
-        ),
-        (
-          message: '${latestExpense.storeName}、今回は趣味寄りの出費ですね。',
-          subMessage: '好きなことに使うお金は大事ですが、財布もちゃんと見ています。',
-        ),
-        (
-          message: '${latestExpense.storeName}での買い物を記録しました。',
-          subMessage: '楽しさのある支出ですが、積み重なると存在感が出てきます。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_hobby_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} hobby time',
+                  subMessage: 'Good use of fun money. The enjoyable stuff is exactly what tends to add up by repetition.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is something you like',
+                  subMessage: 'Spending on things you enjoy matters. The wallet is just keeping the pattern visible.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is becoming a thing',
+                  subMessage: 'Nice flow. Just the kind of spending that quietly stacks up when it keeps showing up.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、趣味の時間だね',
+                  subMessage: 'いい使い方だね。ただ楽しいやつほど、回数でちゃんと効いてくるね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、好きなやつだね',
+                  subMessage: '好きなことに使うお金は大事だね。財布は流れだけ静かに見てるよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、ハマってきてるね',
+                  subMessage: 'いい流れだね。ただこの手の支出、気づいたら積み上がってるやつだね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_hobby',
+        scenarioKey: 'latest_hobby_$lang',
         notificationBody: judge.shouldNotify
-            ? '${latestExpense.storeName}で趣味系の支出を記録しました。'
+            ? _t(
+                lang,
+                '${latestExpense.storeName}で趣味系の支出を確認したよ。',
+                '${latestExpense.storeName} hobby spending noted.',
+              )
             : '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2731,25 +4430,47 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     }
 
     else if (judge.tags.contains(ExpenseJudgeTag.beauty)) {
-      final variant = _pickVariant('latest_beauty', [
-        (
-          message: '${latestExpense.storeName}での支出ですね。',
-          subMessage: '美容系の出費は気分も上がりますが、財布も静かに見ています。',
-        ),
-        (
-          message: '${latestExpense.storeName}、今回は美容寄りの出費ですね。',
-          subMessage: '整えるための支出も、積み重なるとしっかり効いてきます。',
-        ),
-        (
-          message: '${latestExpense.storeName}での買い物を記録しました。',
-          subMessage: '満足感は高そうですが、予算とのバランスも見ていきたいところです。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_beauty_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} self-care time',
+                  subMessage: 'Good kind of spending. It can lift the mood, and it still deserves to stay visible.',
+                ),
+                (
+                  message: '${latestExpense.storeName} was a nice reset',
+                  subMessage: 'Spending on yourself can be healthy. Repetition is the only part worth watching.',
+                ),
+                (
+                  message: '${latestExpense.storeName} polished things up',
+                  subMessage: 'Satisfaction is probably high. Just keep a gentle eye on the pace.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、整えてきたね',
+                  subMessage: 'いい使い方だね。見た目だけじゃなくて、気分も上がるやつだね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、いいリセットだね',
+                  subMessage: 'ちゃんと自分に使ってるね。ただ積み重なると、財布には静かに効いてくるね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、仕上げてきたね',
+                  subMessage: '満足感は高そうだね。そのぶん、ペースだけ少し見ておきたいところだね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_beauty',
+        scenarioKey: 'latest_beauty_$lang',
         notificationBody: judge.shouldNotify
-            ? '${latestExpense.storeName}で美容系の支出を記録しました。'
+            ? _t(
+                lang,
+                '${latestExpense.storeName}で美容系の支出を確認したよ。',
+                '${latestExpense.storeName} beauty spending noted.',
+              )
             : '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2757,27 +4478,49 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     }
 
     else if (ruleResult?.categoryFit == CategoryFit.mismatch) {
-      final variant = _pickVariant('latest_rule_mismatch', [
-        (
-          message: '${latestExpense.storeName}、${latestExpense.category}に入っていますね。',
-          subMessage: '少しカテゴリが広めなので、見直すとかなり管理しやすくなりそうです。',
-        ),
-        (
-          message: '${latestExpense.storeName}が${latestExpense.category}扱いになっています。',
-          subMessage: 'この支出は分けておくと、あとで振り返りやすくなります。',
-        ),
-        (
-          message: '${latestExpense.storeName}、今回はカテゴリが少し曖昧かもしれません。',
-          subMessage: '支出の意味が見えるようになると、予算の使い方もかなり整いやすいです。',
-        ),
-        (
-          message: '${latestExpense.storeName}、急な出費として入っていますね。',
-          subMessage: '本当に予定外ならOKですが、続くようならカテゴリを分けるとかなり見やすくなります。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_rule_mismatch_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} might be too broad',
+                  subMessage: 'It is under ${latestExpense.category}. Splitting it out can make the month much easier to read.',
+                ),
+                (
+                  message: '${latestExpense.storeName} may be in the wrong spot',
+                  subMessage: 'This expense will be much easier to follow later if it has a clearer place.',
+                ),
+                (
+                  message: '${latestExpense.storeName} looks a bit vague',
+                  subMessage: 'Putting it where the meaning is clear helps the wallet stay organized.',
+                ),
+                (
+                  message: '${latestExpense.storeName} feels like an unplanned expense',
+                  subMessage: 'If it was truly unexpected, that is fine. If it repeats, a separate category may help.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、少し広めに入ってるね',
+                  subMessage: '${latestExpense.category}に入ってるよ。分けておくと、あとでかなり見やすいね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、置き場所迷子かもね',
+                  subMessage: 'この支出、分けておくと後からかなり追いやすくなるよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、ちょっと曖昧だね',
+                  subMessage: '意味が見える場所に置くと、財布もだいぶ整理しやすいね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、急な出費枠だね',
+                  subMessage: '本当に予定外ならOKだね。続くならカテゴリ作った方が見やすいね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_rule_mismatch',
+        scenarioKey: 'latest_rule_mismatch_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2786,23 +4529,49 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
 
     else if (ruleResult?.paceStatus == PaceStatus.danger ||
         ruleResult?.paceStatus == PaceStatus.over) {
-      final variant = _pickVariant('latest_rule_danger', [
-        (
-          message: '${latestExpense.storeName}での支出ですね。',
-          subMessage: 'このカテゴリの予算ペース、かなり速めです。',
-        ),
-        (
-          message: '${latestExpense.storeName}を確認しました。',
-          subMessage: '今の流れだと、このカテゴリはかなり前のめりです。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: '楽しめてはいますが、予算の進み方は少し厳しめです。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_rule_danger_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} is moving fast',
+                  subMessage: 'This category is leaning forward pretty hard. The wallet is trying to keep up.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is starting to hit',
+                  subMessage: 'At this pace, this category may be pushing a little too far.',
+                ),
+                (
+                  message: '${latestExpense.storeName} has weight now',
+                  subMessage: 'Enjoying it is fine. The budget pace, though, is getting pretty tight.',
+                ),
+                (
+                  message: 'This category is heating up',
+                  subMessage: '${latestExpense.storeName} is not alone here. The overall pace in this category needs a look.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、ペース速いね',
+                  subMessage: 'このカテゴリ、かなり前のめりだね。財布が少し追いかけてるよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、効いてきてるね',
+                  subMessage: '今の流れだと、このカテゴリはちょっと攻めすぎかもね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、少し重いね',
+                  subMessage: '楽しめてるならいいね。ただ予算の進み方はなかなか厳しめだね。',
+                ),
+                (
+                  message: 'このカテゴリ、熱くなってるね',
+                  subMessage: '${latestExpense.storeName}だけじゃなくて、全体のペースも少し見たいところだね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_rule_danger',
+        scenarioKey: 'latest_rule_danger_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2810,27 +4579,49 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     }
 
     else if (ruleResult?.paceStatus == PaceStatus.warning) {
-      final variant = _pickVariant('latest_rule_warning', [
-        (
-          message: '${latestExpense.storeName}での支出ですね。',
-          subMessage: '今のところ予算内ですが、このカテゴリは少し早めのペースです。',
-        ),
-        (
-          message: '${latestExpense.storeName}を確認しました。',
-          subMessage: 'まだ大丈夫ですが、今の流れは少し前のめりです。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: '一回ごとの重さとペースを見ると、少しだけ意識しておきたいところです。',
-        ),
-        (
-          message: '${latestExpense.storeName}での支出を記録しました。',
-          subMessage: '予算内ではありますが、このカテゴリの進み方はやや速めです。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_rule_warning_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} is moving a bit fast',
+                  subMessage: 'Still within budget, but this category is starting to lean forward.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is forming a flow',
+                  subMessage: 'Still okay for now. Watching it here can make the second half much easier.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is worth noticing',
+                  subMessage: 'The single expense may be fine, but the pace is starting to matter.',
+                ),
+                (
+                  message: 'This category is warming up',
+                  subMessage: 'Not a problem yet. Just a good moment to keep the pace visible.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、少し早めだね',
+                  subMessage: 'まだ予算内だね。ただこのカテゴリ、ちょっと前のめりになってきたね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、流れ出てきたね',
+                  subMessage: 'まだ大丈夫だね。でも今のうちに見ておくと後半かなり楽だね。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、ちょい意識だね',
+                  subMessage: '一回ごとの重さとペースを見ると、少しだけ気にしておきたいところだね。',
+                ),
+                (
+                  message: 'このカテゴリ、少し温まってきたね',
+                  subMessage: 'まだ問題ではないよ。ただ今のうちに流れを見ておくと安心だね。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_rule_warning',
+        scenarioKey: 'latest_rule_warning_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
@@ -2838,148 +4629,130 @@ bool _isSameContext(_LatestComment latest, _LatestComment? priority) {
     }
 
     else if (judge.tags.contains(ExpenseJudgeTag.ceremony)) {
-      final variant = _pickVariant('latest_ceremony', [
-        (
-          message: '${latestExpense.storeName}での支出を記録しました。',
-          subMessage: 'お祝いごとや大切な場面のお金は、今回は静かに見守ります。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: '冠婚葬祭や贈り物に関わる出費のこともあるので、ここはやさしく受け止めます。',
-        ),
-        (
-          message: '${latestExpense.storeName}での記録を確認しました。',
-          subMessage: '大事な人や場面に使うお金もあります。今回は何も言わずに見守ります。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_ceremony_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} feels meaningful',
+                  subMessage: 'Some spending belongs to important moments. The wallet will keep this one gently visible.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is for an important occasion',
+                  subMessage: 'Gifts, ceremonies, and obligations are not something to scold. Just keeping it in view.',
+                ),
+                (
+                  message: '${latestExpense.storeName}, noted with care',
+                  subMessage: 'Money spent for people or important moments can matter beyond the number. No extra comment needed.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、大事な場面だね',
+                  subMessage: 'お祝いごとや必要な付き合いもあるね。ここは静かに見守るよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、意味ある支出だね',
+                  subMessage: '冠婚葬祭や贈り物なら、責めるところじゃないね。やさしく受け止めるよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、そっと残しておくね',
+                  subMessage: '大事な人や場面に使うお金もあるね。今回は多くは言わないよ。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_ceremony',
+        scenarioKey: 'latest_ceremony_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
       );
     }
 
-    else if (judge.tags.contains(ExpenseJudgeTag.health) ||
+else if (judge.tags.contains(ExpenseJudgeTag.health) ||
         judge.tags.contains(ExpenseJudgeTag.transport)) {
-      final variant = _pickVariant('latest_essential', [
-        (
-          message: '${latestExpense.storeName}での支出を記録しました。',
-          subMessage: '生活に必要な出費もあるので、今回は静かに見守ります。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: '必要な支出のことも多いので、ここは落ち着いて見ていきましょう。',
-        ),
-        (
-          message: '${latestExpense.storeName}での記録を確認しました。',
-          subMessage: '必需品寄りの支出は、無理に責めず把握するのが大事です。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_essential_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} is essential',
+                  subMessage: 'Health and mobility come first. This is not where you force cuts.',
+                ),
+                (
+                  message: '${latestExpense.storeName} is necessary',
+                  subMessage: 'This is tied to daily life. The wallet will just keep it quietly visible.',
+                ),
+                (
+                  message: '${latestExpense.storeName} sits on an important line',
+                  subMessage: 'Spending what is needed here is fine. Just keep an eye on the flow.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、必要枠だね',
+                  subMessage: '体や移動に関わるやつだね。ここは無理に削る場面じゃないよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、外せないやつだね',
+                  subMessage: '生活に直結する支出だね。今回は静かに見守っておくよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、大事なラインだね',
+                  subMessage: '必要な分はちゃんと使っていいところだね。流れだけ軽く見ておこう。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'latest_essential',
+        scenarioKey: 'latest_essential_$lang',
         notificationBody: '',
         message: variant.message,
         subMessage: variant.subMessage,
       );
-    }
-
-        else if (judge.shouldAskAi) {
-      if (aiResult != null &&
-          (aiResult.confidence ?? 0) >= 0.75 &&
-          (aiResult.suggestedCategory?.isNotEmpty ?? false)) {
-        final suggestedCategory = aiResult.suggestedCategory!;
-        final reasonText = aiResult.reason.trim();
-
-        final variant = aiResult.storeType == 'online_shopping'
-            ? _pickVariant('latest_ai_online_suggested', [
-                (
-                  message: latestTimeTone == 'late_night'
-                      ? '${latestExpense.storeName}、深夜ポチり系の気配がありますね。'
-                      : '${latestExpense.storeName}、かなり通販寄りに見えます。',
-                  subMessage: reasonText.isNotEmpty
-                      ? '$reasonText 今回は $suggestedCategory として見るのが自然そうです。'
-                      : '今回は $suggestedCategory として見るのが自然そうです。',
-                ),
-                (
-                  message: 'この支出、$suggestedCategory として見るとかなり自然です。',
-                  subMessage: reasonText.isNotEmpty
-                      ? reasonText
-                      : 'まだ断定はしませんが、AI補助だとその見方がかなり近そうです。',
-                ),
-              ])
-            : _pickVariant('latest_ai_suggested', [
-                (
-                  message: '${latestExpense.storeName}、かなり$suggestedCategory寄りに見えます。',
-                  subMessage: reasonText.isNotEmpty
-                      ? '$reasonText 今回は $suggestedCategory として見るのが自然そうです。'
-                      : '今回は $suggestedCategory として見るのが自然そうです。',
-                ),
-                (
-                  message: 'この支出、$suggestedCategoryとして見ると自然です。',
-                  subMessage: reasonText.isNotEmpty
-                      ? reasonText
-                      : 'まだ断定はしませんが、今回はその見方がかなり近そうです。',
-                ),
-                (
-                  message: '${latestExpense.storeName}、今回は$suggestedCategoryの可能性が高そうです。',
-                  subMessage: reasonText.isNotEmpty
-                      ? reasonText
-                      : 'いまは補助判定ですが、かなりそれっぽい支出です。',
-                ),
-              ]);
-
-        latestComment = _LatestComment(
-          scenarioKey: 'latest_ai_suggested',
-          notificationBody: '',
-          message: variant.message,
-          subMessage: variant.subMessage,
-        );
-      } else {
-        final variant = _pickVariant('latest_unknown', [
-          (
-            message: '${latestExpense.storeName}、今回は少し正体がつかみにくいですね。',
-            subMessage: 'この出費はもう少し意味を見てから判断したいところです。',
-          ),
-          (
-            message: '今はまだ、どの流れの支出か決めきれません。',
-            subMessage: '似た記録が増えると、かなり人っぽく見えてきそうです。',
-          ),
-          (
-            message: '${latestExpense.storeName}、今回は静観寄りで見ています。',
-            subMessage: 'いまは判断を急がず、もう少しデータが揃うのを待ちたい支出です。',
-          ),
-        ]);
-
-        latestComment = _LatestComment(
-          scenarioKey: 'latest_unknown',
-          notificationBody: '',
-          message: variant.message,
-          subMessage: variant.subMessage,
-        );
-      }
     }
     else {
-      final variant = _pickVariant('default', [
-        (
-          message: '直近の支出は${latestExpense.storeName}ですね。',
-          subMessage: '今のところは大丈夫ですが、油断は禁物です。',
-        ),
-        (
-          message: '${latestExpense.storeName}での支出を確認しました。',
-          subMessage: '一回ずつ記録していくのは、とても良い習慣です。',
-        ),
-        (
-          message: '${latestExpense.storeName}ですね。',
-          subMessage: '少しずつでも把握できているのはかなり良い状態です。',
-        ),
-      ]);
+      final variant = _pickVariant(
+        'latest_fallback_$lang',
+        isEn
+            ? [
+                (
+                  message: '${latestExpense.storeName} is in view',
+                  subMessage: 'Nothing dramatic for now. Keeping each expense visible is already doing the work.',
+                ),
+                (
+                  message: '${latestExpense.storeName} showed up',
+                  subMessage: 'One small move in the month. The wallet can follow the flow better when it stays visible.',
+                ),
+                (
+                  message: '${latestExpense.storeName} this time',
+                  subMessage: 'Looks calm for now. These small records are what keep the month readable.',
+                ),
+              ]
+            : [
+                (
+                  message: '${latestExpense.storeName}、見えてるね',
+                  subMessage: '今のところは落ち着いて見られてるね。一つずつ見えるのが大事だよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}、流れに入ったね',
+                  subMessage: '小さな一手でも、見えてるだけで財布はかなり追いやすいよ。',
+                ),
+                (
+                  message: '${latestExpense.storeName}だね',
+                  subMessage: 'ちゃんと把握できてるね。この積み重ねがあとで効いてくるよ。',
+                ),
+              ],
+      );
 
       latestComment = _LatestComment(
-        scenarioKey: 'default',
-        notificationBody: '${latestExpense.storeName} の支出を記録しました。',
+        scenarioKey: 'latest_fallback_$lang',
+        notificationBody: _t(
+          lang,
+          '支出を確認したよ。',
+          'Spending noted.',
+        ),
         message: variant.message,
         subMessage: variant.subMessage,
       );
@@ -3023,25 +4796,16 @@ if (_isSameContext(baseLatestComment, priorityLatestComment)) {
   notificationSource = priorityLatestComment!;
 }
 
-final notificationPreviewBody = [
-  notificationSource.message,
-  if (notificationSource.subMessage.isNotEmpty)
-    notificationSource.subMessage,
-].join('\n');
-
-print('======== ROAST DEBUG ========');
-print('🔥 priority: ${priorityLatestComment?.scenarioKey}');
-print('🔥 latest(base): ${baseLatestComment.scenarioKey}');
-print('🔥 latest(ui): ${uiLatestComment.scenarioKey}');
-print('🔥 selected(notification): ${notificationSource.scenarioKey}');
-print('🔥 body: $notificationPreviewBody');
-print('================================');
-
 
 return _composeLayeredResult(
+  languageCode: lang,
   title: latestExpense.storeName.isNotEmpty
-    ? '${latestExpense.storeName} の支出を記録しました。'
-    : '支出を記録しました。',
+      ? _t(
+          lang,
+          '${latestExpense.storeName}、記録したよ',
+          '${latestExpense.storeName} logged',
+        )
+      : _t(lang, '動きあったね', 'Something moved'),
   leadMessage: secondaryMessage,
   leadSubMessage: secondarySubMessage,
   monthly: monthlyComment,

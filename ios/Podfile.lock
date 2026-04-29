@@ -1,8 +1,12 @@
 PODS:
   - app_links (6.4.1):
     - Flutter
+  - app_settings (6.1.2):
+    - Flutter
   - Flutter (1.0.0)
   - flutter_local_notifications (0.0.1):
+    - Flutter
+  - home_widget (0.0.1):
     - Flutter
   - image_picker_ios (0.0.1):
     - Flutter
@@ -28,8 +32,10 @@ PODS:
 
 DEPENDENCIES:
   - app_links (from `.symlinks/plugins/app_links/ios`)
+  - app_settings (from `.symlinks/plugins/app_settings/ios`)
   - Flutter (from `Flutter`)
   - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
+  - home_widget (from `.symlinks/plugins/home_widget/ios`)
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - isar_flutter_libs (from `.symlinks/plugins/isar_flutter_libs/ios`)
   - photo_manager (from `.symlinks/plugins/photo_manager/darwin`)
@@ -46,10 +52,14 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   app_links:
     :path: ".symlinks/plugins/app_links/ios"
+  app_settings:
+    :path: ".symlinks/plugins/app_settings/ios"
   Flutter:
     :path: Flutter
   flutter_local_notifications:
     :path: ".symlinks/plugins/flutter_local_notifications/ios"
+  home_widget:
+    :path: ".symlinks/plugins/home_widget/ios"
   image_picker_ios:
     :path: ".symlinks/plugins/image_picker_ios/ios"
   isar_flutter_libs:
@@ -66,19 +76,21 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
-  app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
+  app_links: 585674be3c6661708e6cd794ab4f39fb9d8356f9
+  app_settings: 9217ccbe946aa9a3751b5459dcf50dabc87517b2
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
-  image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
-  isar_flutter_libs: 9fc2cfb928c539e1b76c481ba5d143d556d94920
-  photo_manager: 25fd77df14f4f0ba5ef99e2c61814dde77e2bceb
-  purchases_flutter: 3570127ba41583a75e553d68a763367007830eff
+  flutter_local_notifications: eda81afddbf18f8589f6ec069ce593c4c6378769
+  home_widget: fdbbfaa90f06f3022cb57f79678d4d58b9c5e140
+  image_picker_ios: 4f2f91b01abdb52842a8e277617df877e40f905b
+  isar_flutter_libs: b69f437aeab9c521821c3f376198c4371fa21073
+  photo_manager: d8a1055c2d3ee24fc300461c66e0defdec58b3d6
+  purchases_flutter: c1245d908efb42739b626d03905302c003d26811
   PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
   RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
-  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
-  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
-  video_player_avfoundation: dd410b52df6d2466a42d28550e33e4146928280a
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+  url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
+  video_player_avfoundation: 7993f492ae0bd77edaea24d9dc051d8bb2cd7c86
 
-PODFILE CHECKSUM: 6cb1255d8cfec0b4fd9078c72f556370bd635d30
+PODFILE CHECKSUM: 3917881ed04b1512261c10e167e18a70d844ae93
 
 COCOAPODS: 1.16.2

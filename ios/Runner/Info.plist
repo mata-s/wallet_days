@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Saiyome</string>
+	<string>Wallet Days</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,17 +15,32 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>saiyome</string>
+	<string>Wallet Days</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>walletdays</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>レシートを撮影して支出を自動入力するためにカメラを使用します。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>レシート画像の取り扱いに写真ライブラリを使用します。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>保存済みのレシート画像を選択して支出を自動入力するために写真へのアクセスを使用します。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,11 +81,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>レシートを撮影して支出を自動入力するためにカメラを使用します。</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>保存済みのレシート画像を選択して支出を自動入力するために写真へのアクセスを使用します。</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>レシート画像の取り扱いに写真ライブラリを使用します。</string>
 </dict>
 </plist>

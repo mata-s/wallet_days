@@ -59,6 +59,7 @@ class UnknownExpenseAiService {
   UnknownExpenseAiService._();
 
   static final SupabaseClient _client = Supabase.instance.client;
+  static const bool _useAi = false; // AI分類を一時OFF
 
   // 同じ店名で毎回AIを呼ばないための簡易メモリキャッシュ
   static final Map<String, UnknownExpenseAiResult> _memoryCache = {};
@@ -153,6 +154,7 @@ class UnknownExpenseAiService {
     DateTime? spentAt,
     bool useCache = true,
   }) async {
+    if (!_useAi) return null;
     final normalizedStoreName = normalizeStoreName(storeName);
     if (normalizedStoreName.isEmpty) return null;
 

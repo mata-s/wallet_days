@@ -5,6 +5,7 @@ import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MoneyUsagePage extends StatefulWidget {
   const MoneyUsagePage({super.key});
@@ -33,6 +34,7 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
     _loadExpenses();
   }
 
@@ -53,6 +55,42 @@ class _MoneyUsagePageState extends State<MoneyUsagePage> {
       _isLoading = false;
     });
   }
+
+  String? _languageOverride;
+
+Future<void> _loadLanguagePreference() async {
+  final prefs = await SharedPreferences.getInstance();
+  if (!mounted) return;
+  setState(() {
+    _languageOverride = prefs.getString('app_language');
+  });
+}
+
+String _currentLang() {
+  if (_languageOverride != null) return _languageOverride!;
+  final device = Localizations.localeOf(context).languageCode;
+  return device == 'ja' ? 'ja' : 'en';
+}
+
+String _t(String ja, String en) {
+  return _currentLang() == 'ja' ? ja : en;
+}
+
+String _formatMoney(int amount) {
+  if (_currentLang() == 'ja') {
+    return '¥${_yenFormatter.format(amount)}';
+  }
+
+  return NumberFormat.currency(
+    locale: 'en_US',
+    symbol: '\$',
+    decimalDigits: 2,
+  ).format(amount / 100);
+}
+
+String _formatYear(int year) {
+  return _currentLang() == 'ja' ? '$year年' : '$year';
+}
 
 
 List<BudgetHistory> get _sortedBudgetHistories {
@@ -134,9 +172,9 @@ String? get _summaryBottomLabel {
     case _UsagePeriod.lastMonth:
       return null;
     case _UsagePeriod.byYear:
-      return '$_selectedYear年合計';
+      return _t('$_selectedYear年合計', '${_formatYear(_selectedYear)} total');
     case _UsagePeriod.all:
-      return '全期間合計';
+      return _t('全期間合計', 'All-time total');
   }
 }
 
@@ -185,24 +223,24 @@ int get _previousPeriodTotal {
   String get _selectedPeriodLabel {
     switch (_selectedPeriod) {
       case _UsagePeriod.thisMonth:
-        return '今月';
+        return _t('今月', 'This month');
       case _UsagePeriod.lastMonth:
-        return '先月';
+        return _t('先月', 'Last month');
       case _UsagePeriod.byYear:
-        return '$_selectedYear年';
+        return _formatYear(_selectedYear);
       case _UsagePeriod.all:
-        return '全期間';
+        return _t('全期間', 'All time');
     }
   }
 
   String get _comparisonLabel {
     switch (_selectedPeriod) {
       case _UsagePeriod.thisMonth:
-        return '先月比';
+        return _t('先月比', 'vs last month');
       case _UsagePeriod.lastMonth:
-        return '前月比';
+        return _t('前月比', 'vs previous month');
       case _UsagePeriod.byYear:
-        return '前年比';
+        return _t('前年比', 'vs last year');
       case _UsagePeriod.all:
         return '';
     }
@@ -228,7 +266,7 @@ int get _previousPeriodTotal {
     final map = <String, int>{};
 
     for (final expense in _filteredExpenses) {
-      final label = expense.storeName.trim().isEmpty ? '店名なし' : expense.storeName;
+      final label = expense.storeName.trim().isEmpty ? _t('店名なし', 'No store name') : expense.storeName;
       map[label] = (map[label] ?? 0) + expense.amount.toInt();
     }
 
@@ -273,14 +311,14 @@ List<int> get _availableYears {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(bottomSheetContext),
-                      child: const Text(
-                        'キャンセル',
-                        style: TextStyle(fontSize: 16),
+                      child: Text(
+                        _t('キャンセル', 'Cancel'),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Text(
-                      '年を選択',
-                      style: TextStyle(
+                    Text(
+                      _t('年を選択', 'Select year'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -292,9 +330,9 @@ List<int> get _availableYears {
                         });
                         Navigator.pop(bottomSheetContext);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -314,7 +352,7 @@ List<int> get _availableYears {
                   children: years.map((year) {
                     return Center(
                       child: Text(
-                        '$year年',
+                        _formatYear(year),
                         style: const TextStyle(fontSize: 22),
                       ),
                     );
@@ -334,14 +372,14 @@ List<int> get _availableYears {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('お金の使い方'),
+        title: Text(_t('お金の使い方', 'Spending insights')),
         centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _expenses.isEmpty
-              ? const Center(
-                  child: Text('まだ支出がありません'),
+              ? Center(
+                  child: Text(_t('まだ支出がありません', 'No expenses yet')),
                 )
               : RefreshIndicator(
                   onRefresh: _loadExpenses,
@@ -355,6 +393,7 @@ List<int> get _availableYears {
                             _selectedPeriod = period;
                           });
                         },
+                        languageCode: _currentLang(),
                       ),
                       const SizedBox(height: 16),
                       if (_selectedPeriod == _UsagePeriod.byYear)
@@ -363,6 +402,7 @@ List<int> get _availableYears {
                           child: _YearPickerButton(
                             selectedYear: _selectedYear,
                             onTap: _showYearPicker,
+                            languageCode: _currentLang(),
                           ),
                         ),
                       const SizedBox(height: 16),
@@ -376,32 +416,33 @@ List<int> get _availableYears {
                         expenseCount: _filteredExpenses.length,
                         remainingBudget: _remainingBudget,
                         showRemaining: _relevantBudgetHistories.isNotEmpty,
-                        yenFormatter: _yenFormatter,
+                        formatMoney: _formatMoney,
+                        languageCode: _currentLang(),
                       ),
                       const SizedBox(height: 16),
                       _SectionCard(
-                        title: 'カテゴリ別',
+                        title: _t('カテゴリ別', 'By category'),
                         children: _categoryTotals
                             .map(
                               (row) => _AmountListTile(
                                 label: row.label,
                                 amount: row.amount,
                                 totalAmount: _totalAmount,
-                                yenFormatter: _yenFormatter,
+                                formatMoney: _formatMoney,
                               ),
                             )
                             .toList(),
                       ),
                       const SizedBox(height: 16),
                       _SectionCard(
-                        title: 'お店別 TOP10',
+                        title: _t('お店別 TOP10', 'Top stores'),
                         children: _storeTotals
                             .map(
                               (row) => _AmountListTile(
                                 label: row.label,
                                 amount: row.amount,
                                 totalAmount: _totalAmount,
-                                yenFormatter: _yenFormatter,
+                                formatMoney: _formatMoney,
                               ),
                             )
                             .toList(),
@@ -423,7 +464,8 @@ class _SummaryCard extends StatelessWidget {
   final int expenseCount;
   final int remainingBudget;
   final bool showRemaining;
-  final NumberFormat yenFormatter;
+  final String Function(int amount) formatMoney;
+  final String languageCode;
 
   const _SummaryCard({
     required this.title,
@@ -435,8 +477,15 @@ class _SummaryCard extends StatelessWidget {
     required this.expenseCount,
     required this.remainingBudget,
     required this.showRemaining,
-    required this.yenFormatter,
+    required this.formatMoney,
+    required this.languageCode,
   });
+
+  bool get _isJa => languageCode == 'ja';
+
+  String _t(String ja, String en) {
+    return _isJa ? ja : en;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -445,8 +494,8 @@ class _SummaryCard extends StatelessWidget {
     final hasComparison = comparisonLabel.isNotEmpty;
     final isIncrease = difference > 0;
     final differenceText = difference == 0
-        ? '±0円'
-        : '${isIncrease ? '+' : '-'}¥${yenFormatter.format(difference.abs())}';
+        ? (_isJa ? '±0円' : '\$0.00')
+        : '${isIncrease ? '+' : '-'}${formatMoney(difference.abs())}';
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -458,7 +507,7 @@ class _SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$titleの使った総額',
+            _t('$titleの使った総額', 'Total spent: $title'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.black54,
               fontWeight: FontWeight.w700,
@@ -466,14 +515,14 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '¥${yenFormatter.format(totalAmount)}',
+            formatMoney(totalAmount),
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            '記録数: $expenseCount件',
+            _t('記録数: $expenseCount件', '$expenseCount records'),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: Colors.black87,
             ),
@@ -496,8 +545,8 @@ class _SummaryCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               remainingBudget >= 0
-                  ? '$titleで余った額: ¥${yenFormatter.format(remainingBudget)}'
-                  : '$titleでオーバー: ¥${yenFormatter.format(remainingBudget.abs())}',
+                  ? _t('$titleで余った額: ${formatMoney(remainingBudget)}', 'Left in $title: ${formatMoney(remainingBudget)}')
+                  : _t('$titleでオーバー: ${formatMoney(remainingBudget.abs())}', 'Over in $title: ${formatMoney(remainingBudget.abs())}'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: remainingBudget >= 0
@@ -506,15 +555,15 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
           ],
-if (bottomLabel != null) ...[
-  const SizedBox(height: 4),
-  Text(
-    '$bottomLabel: ¥${yenFormatter.format(bottomTotal)}',
-    style: theme.textTheme.bodySmall?.copyWith(
-      color: Colors.black54,
-    ),
-  ),
-],
+          if (bottomLabel != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '$bottomLabel: ${formatMoney(bottomTotal)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.black54,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -573,13 +622,13 @@ class _AmountListTile extends StatelessWidget {
   final String label;
   final int amount;
   final int totalAmount;
-  final NumberFormat yenFormatter;
+  final String Function(int amount) formatMoney;
 
   const _AmountListTile({
     required this.label,
     required this.amount,
     required this.totalAmount,
-    required this.yenFormatter,
+    required this.formatMoney,
   });
 
   @override
@@ -602,7 +651,7 @@ class _AmountListTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              '¥${yenFormatter.format(amount)}',
+              formatMoney(amount),
               style: theme.textTheme.bodyLarge?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -636,11 +685,17 @@ class _AmountRow {
 class _PeriodSelector extends StatelessWidget {
   final _UsagePeriod selectedPeriod;
   final ValueChanged<_UsagePeriod> onChanged;
+  final String languageCode;
 
   const _PeriodSelector({
     required this.selectedPeriod,
     required this.onChanged,
+    required this.languageCode,
   });
+
+  String _t(String ja, String en) {
+    return languageCode == 'ja' ? ja : en;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -649,22 +704,22 @@ class _PeriodSelector extends StatelessWidget {
       runSpacing: 8,
       children: [
         _PeriodChip(
-          label: '今月',
+          label: _t('今月', 'This month'),
           selected: selectedPeriod == _UsagePeriod.thisMonth,
           onTap: () => onChanged(_UsagePeriod.thisMonth),
         ),
         _PeriodChip(
-          label: '先月',
+          label: _t('先月', 'Last month'),
           selected: selectedPeriod == _UsagePeriod.lastMonth,
           onTap: () => onChanged(_UsagePeriod.lastMonth),
         ),
         _PeriodChip(
-          label: '年別',
+          label: _t('年別', 'Year'),
           selected: selectedPeriod == _UsagePeriod.byYear,
           onTap: () => onChanged(_UsagePeriod.byYear),
         ),
         _PeriodChip(
-          label: '全期間',
+          label: _t('全期間', 'All time'),
           selected: selectedPeriod == _UsagePeriod.all,
           onTap: () => onChanged(_UsagePeriod.all),
         ),
@@ -714,10 +769,12 @@ class _PeriodChip extends StatelessWidget {
 class _YearPickerButton extends StatelessWidget {
   final int selectedYear;
   final VoidCallback onTap;
+  final String languageCode;
 
   const _YearPickerButton({
     required this.selectedYear,
     required this.onTap,
+    required this.languageCode,
   });
 
   @override
@@ -736,7 +793,7 @@ class _YearPickerButton extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '$selectedYear年',
+                languageCode == 'ja' ? '$selectedYear年' : '$selectedYear',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,

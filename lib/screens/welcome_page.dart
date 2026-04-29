@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:saiyome/screens/backup_restore_page.dart';
+import 'package:saiyome/common/app_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WelcomePage extends StatefulWidget {
@@ -68,37 +69,26 @@ class _WelcomePageState extends State<WelcomePage> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           children: [
             const SizedBox(height: 24),
-              Container(
-                width: 104,
-                height: 104,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(32),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x12000000),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.savings_outlined,
-                  size: 52,
+              SizedBox(
+                width: 160,
+                height: 160,
+                child: Image.asset(
+                  'assets/images/leeway.png',
+                  fit: BoxFit.contain,
                 ),
               ),
               const SizedBox(height: 28),
+              // Text(
+              //   AppText.appTitle(context),
+              //   textAlign: TextAlign.center,
+              //   style: theme.textTheme.headlineSmall?.copyWith(
+              //     fontWeight: FontWeight.w800,
+              //     color: const Color(0xFF2D221E),
+              //   ),
+              // ),
+              // const SizedBox(height: 14),
               Text(
-                '財布の余命へようこそ',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF2D221E),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'すぐに使い始められます。\nあとからアカウント登録して、データを引き継ぐこともできます。',
+                AppText.welcomeDesc(context),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: Colors.black54,
@@ -118,14 +108,14 @@ class _WelcomePageState extends State<WelcomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'はじめる',
+                      AppText.startTitle(context),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'まずは気軽に始めましょう。',
+                      AppText.startDesc(context),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.black54,
                         height: 1.6,
@@ -151,9 +141,9 @@ class _WelcomePageState extends State<WelcomePage> {
                                 height: 22,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text(
-                                'はじめる',
-                                style: TextStyle(
+                            : Text(
+                                AppText.startButton(context),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 16,
                                 ),
@@ -176,14 +166,14 @@ class _WelcomePageState extends State<WelcomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ログインする',
+                      AppText.loginTitle(context),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '以前のデータを引き継ぐ方はこちら。\nApple・Google・メールでログインできます。',
+                      AppText.loginDesc(context),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.black54,
                         height: 1.6,
@@ -202,9 +192,9 @@ class _WelcomePageState extends State<WelcomePage> {
                             borderRadius: BorderRadius.circular(18),
                           ),
                         ),
-                        child: const Text(
-                          'ログインする',
-                          style: TextStyle(
+                        child: Text(
+                          AppText.loginButton(context),
+                          style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
                           ),
@@ -214,15 +204,6 @@ class _WelcomePageState extends State<WelcomePage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
-            Text(
-              'あとからアカウント登録すると、\n機種変更時もデータを引き継げるので安心です。',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.black45,
-                height: 1.6,
-              ),
-            ),
             const SizedBox(height: 24),
           ],
         ),

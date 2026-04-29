@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:saiyome/utils/time_provider.dart';
 import 'package:saiyome/models/isar_service.dart';
+import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MonthlyReportResult {
   final Map<String, dynamic> report;
@@ -113,7 +115,10 @@ class MonthlyReportService {
       'period_start': _dateKey(periodStart),
       'period_end': _dateKey(periodEnd),
       'use_ai': useAi,
+      'lang': await _currentLang(),
     };
+
+    print('[MonthlyReportService] generate payload=$payload');
 
     final response = await _client.functions.invoke(
       'generate-monthly-report',
@@ -158,7 +163,10 @@ class MonthlyReportService {
       'user_id': _userId,
       'budget_history_local_id': localId,
       'use_ai': useAi,
+      'lang': await _currentLang(),
     };
+
+    print('[MonthlyReportService] generateByLocalId payload=$payload');
 
     final response = await _client.functions.invoke(
       'generate-monthly-report',
@@ -229,6 +237,7 @@ class MonthlyReportService {
     final existing = await getReportForHistoryLocalId(localId: previousHistory.id);
     if (existing != null) {
       print('[MonthlyReportService] skip: report already exists for localId=${previousHistory.id}');
+      print('[MonthlyReportService] existing report => $existing');
       return false;
     }
 
@@ -238,6 +247,27 @@ class MonthlyReportService {
 
     await getOrCreateReportByLocalId(localId: previousHistory.id);
     return true;
+  }
+
+  static Future<String> _currentLang() async {
+    final prefs = await SharedPreferences.getInstance();
+    final override = prefs.getString('app_language');
+    if (override != null) {
+      print('[MonthlyReportService] lang override=$override');
+      return override;
+    }
+
+    final metadataLocale = Supabase.instance.client.auth.currentSession?.user.userMetadata?['locale'];
+    if (metadataLocale == 'en') {
+      print('[MonthlyReportService] lang metadata=en');
+      return 'en';
+    }
+
+    // fallback to device locale
+    final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    final result = deviceLocale == 'ja' ? 'ja' : 'en';
+    print('[MonthlyReportService] lang device=$deviceLocale => $result');
+    return result;
   }
 
   static String _dateKey(DateTime date) {

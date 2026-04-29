@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:saiyome/screens/home_page.dart';
 import 'package:saiyome/services/account_data_sync_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BackupRestorePage extends StatefulWidget {
   final bool showSignUpTab;
@@ -24,6 +26,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
   bool _isSyncingAccountData = false;
   late bool _showSignUp;
   bool _obscurePassword = true;
+  String? _languageOverride; // 'ja' or 'en'
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -36,10 +39,29 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
   String? _pendingLinkedProvider;
   bool _shouldSyncAfterAuthChange = false;
 
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
 
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
     _showSignUp = widget.showSignUpTab ? widget.initialIsSignUp : false;
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
       (data) {
@@ -120,7 +142,10 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'データを同期しました（支出${result.expenseCount}件・履歴${result.historyCount}件）',
+            _t(
+              'データを同期しました（支出${result.expenseCount}件・履歴${result.historyCount}件）',
+              'Data synced: ${result.expenseCount} expenses and ${result.historyCount} history records.',
+            ),
           ),
         ),
       );
@@ -137,12 +162,15 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
           (route) => false,
         );
       } else {
-        Navigator.pop(context, true);
+        // Stay on this page and reflect logged-in state
+        setState(() {});
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = _showSignUp ? '登録後のデータ同期に失敗しました' : 'ログイン後のデータ同期に失敗しました';
+        _errorMessage = _showSignUp
+            ? _t('登録後のデータ同期に失敗しました', 'Failed to sync data after sign up.')
+            : _t('ログイン後のデータ同期に失敗しました', 'Failed to sync data after log in.');
       });
     } finally {
       if (!mounted) return;
@@ -155,6 +183,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
   }
 
   Future<void> _signInWithProvider(OAuthProvider provider) async {
+    const redirectTo = 'walletdays://login-callback';
     setState(() {
       _isSigningIn = true;
       _errorMessage = null;
@@ -170,32 +199,51 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
       if (_showSignUp) {
         if (user == null) {
-          throw Exception('現在のユーザーが見つかりませんでした');
+          throw Exception(_t('現在のユーザーが見つかりませんでした', 'Current user was not found.'));
         }
         if (!user.isAnonymous) {
-          throw Exception('この登録方法は、今使っているデータを引き継いだまま登録するときに利用できます');
+          throw Exception(_t(
+            'この登録方法は、今使っているデータを引き継いだまま登録するときに利用できます',
+            'This sign up method can be used when keeping your current data.',
+          ));
         }
         _pendingLinkedProvider = provider == OAuthProvider.apple
             ? 'apple'
             : provider == OAuthProvider.google
                 ? 'google'
                 : 'oauth';
-        await auth.linkIdentity(provider);
+        await auth.linkIdentity(
+          provider,
+          redirectTo: redirectTo,
+          authScreenLaunchMode: LaunchMode.externalApplication,
+        );
         if (!mounted) return;
         setState(() {
-          _infoMessage = '認証完了後、自動でデータを同期します。';
+          _infoMessage = _t(
+            '認証完了後、自動でデータを同期します。',
+            'Your data will sync automatically after authentication.',
+          );
         });
       } else {
-        await auth.signInWithOAuth(provider);
+        await auth.signInWithOAuth(
+          provider,
+          redirectTo: redirectTo,
+          authScreenLaunchMode: LaunchMode.externalApplication,
+        );
         if (!mounted) return;
         setState(() {
-          _infoMessage = 'ログイン完了後、自動でデータを同期します。';
+          _infoMessage = _t(
+            'ログイン完了後、自動でデータを同期します。',
+            'Your data will sync automatically after log in.',
+          );
         });
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = _showSignUp ? '登録に失敗しました' : 'ログインに失敗しました';
+        _errorMessage = _showSignUp
+            ? _t('登録に失敗しました', 'Sign up failed.')
+            : _t('ログインに失敗しました', 'Log in failed.');
         _isSigningIn = false;
         _shouldSyncAfterAuthChange = false;
       });
@@ -222,18 +270,18 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       var hasError = false;
 
       if (email.isEmpty) {
-        _emailError = 'メールアドレスを入力してください';
+        _emailError = _t('メールアドレスを入力してください', 'Enter your email address.');
         hasError = true;
       } else if (!_isValidEmail(email)) {
-        _emailError = '正しいメールアドレスを入力してください';
+        _emailError = _t('正しいメールアドレスを入力してください', 'Enter a valid email address.');
         hasError = true;
       }
 
       if (password.isEmpty) {
-        _passwordError = 'パスワードを入力してください';
+        _passwordError = _t('パスワードを入力してください', 'Enter your password.');
         hasError = true;
       } else if (_showSignUp && password.length < 6) {
-        _passwordError = 'パスワードは6文字以上で入力してください';
+        _passwordError = _t('パスワードは6文字以上で入力してください', 'Password must be at least 6 characters.');
         hasError = true;
       }
 
@@ -248,10 +296,13 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
       if (_showSignUp) {
         if (user == null) {
-          throw Exception('現在のユーザーが見つかりませんでした');
+          throw Exception(_t('現在のユーザーが見つかりませんでした', 'Current user was not found.'));
         }
         if (!user.isAnonymous) {
-          throw Exception('この登録方法は、今使っているデータを引き継いだまま登録するときに利用できます');
+          throw Exception(_t(
+            'この登録方法は、今使っているデータを引き継いだまま登録するときに利用できます',
+            'This sign up method can be used when keeping your current data.',
+          ));
         }
         _pendingLinkedProvider = 'email';
         final hasVerifiedEmail =
@@ -292,14 +343,14 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
           if (message.contains('already') ||
               message.contains('exists') ||
               message.contains('registered')) {
-            _emailError = 'そのメールアドレスはすでに存在しています';
+            _emailError = _t('そのメールアドレスはすでに存在しています', 'That email address is already registered.');
           } else {
             _errorMessage = e.message;
           }
         } else {
           if (message.contains('invalid login credentials') ||
               message.contains('invalid_credentials')) {
-            _passwordError = 'パスワードが違います';
+            _passwordError = _t('パスワードが違います', 'The password is incorrect.');
           } else {
             _errorMessage = e.message;
           }
@@ -310,7 +361,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       setState(() {
         _shouldSyncAfterAuthChange = false;
         _pendingLinkedProvider = null;
-        _errorMessage = _showSignUp ? e.toString() : 'メールログインに失敗しました';
+        _errorMessage = _showSignUp ? e.toString() : _t('メールログインに失敗しました', 'Email log in failed.');
       });
     } finally {
       if (!mounted) return;
@@ -326,11 +377,12 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
     final theme = Theme.of(context);
     final user = Supabase.instance.client.auth.currentUser;
     final isAnonymous = user?.isAnonymous ?? true;
+    final isLoggedIn = !isAnonymous;
     final isBusy = _isSigningIn || _isSyncingAccountData;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.showSignUpTab ? 'アカウント' : 'ログイン'),
+        title: Text(widget.showSignUpTab ? _t('アカウント', 'Account') : _t('ログイン', 'Log in')),
         centerTitle: true,
       ),
       body: Stack(
@@ -358,8 +410,8 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
                       Expanded(
                         child: Text(
                           isAnonymous
-                              ? '現在はゲスト状態です（この端末のみに保存されます）'
-                              : 'アカウントにログイン済みです',
+                              ? _t('現在はゲスト状態です', 'You are using the app as a guest.')
+                              : _t('アカウントにログイン済みです', 'You are logged in.'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.black87,
                             fontWeight: FontWeight.w600,
@@ -377,271 +429,442 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: const Color(0xFFF0F0F0)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.cloud_download_outlined, size: 20),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.showSignUpTab
-                                ? (_showSignUp ? 'アカウントを登録' : 'アカウントにログイン')
-                                : 'アカウントにログイン',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        widget.showSignUpTab
-                            ? (_showSignUp
-                                ? '登録すると、今のデータを引き継いだまま機種変更時も同じアカウントで使えます。'
-                                : '登録済みのアカウントでログインすると、保存済みデータをこの端末に同期できます。')
-                            : '登録済みのアカウントでログインすると、保存済みデータをこの端末に同期できます。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.black54,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FC),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFEDEDED)),
-                        ),
-                        child: Text(
-                          widget.showSignUpTab
-                              ? (_showSignUp
-                                  ? '新規登録では、今のデータをそのまま引き継いでアカウントを作成します。'
-                                  : 'ログインでは、登録済みアカウントのデータをこの端末へ同期します。')
-                              : 'ログインでは、登録済みアカウントのデータをこの端末へ同期します。',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (widget.showSignUpTab) ...[
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF4F4F4),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _showSignUp = true;
-                                      _errorMessage = null;
-                                      _infoMessage = null;
-                                      _clearFieldErrors();
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: _showSignUp
-                                          ? Colors.white
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '新規登録',
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: _showSignUp
-                                            ? Colors.black87
-                                            : Colors.black45,
-                                      ),
-                                    ),
+                  child: isLoggedIn
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.verified_user_outlined, size: 22),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _t('ログイン中です', 'Logged in'),
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _showSignUp = false;
-                                      _errorMessage = null;
-                                      _infoMessage = null;
-                                      _clearFieldErrors();
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: !_showSignUp
-                                          ? Colors.white
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      'ログイン',
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: !_showSignUp
-                                            ? Colors.black87
-                                            : Colors.black45,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      Column(
-                        children: [
-                          TextField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            autofillHints: const [AutofillHints.email],
-                            decoration: InputDecoration(
-                              labelText: 'メールアドレス',
-                              border: const OutlineInputBorder(),
-                              errorText: _emailError,
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            autofillHints: const [AutofillHints.password],
-                            decoration: InputDecoration(
-                              labelText: 'パスワード',
-                              helperText: _showSignUp ? '6文字以上' : null,
-                              errorText: _passwordError,
-                              border: const OutlineInputBorder(),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: ElevatedButton(
-                              onPressed: isBusy ? null : _submitWithEmail,
-                              child: Text(
-                                widget.showSignUpTab
-                                    ? (_showSignUp ? 'メールで登録' : 'メールでログイン')
-                                    : 'メールでログイン',
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8F9FC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFEDEDED)),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              const Expanded(child: Divider()),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                child: Text(
-                                  widget.showSignUpTab
-                                      ? (_showSignUp
-                                          ? 'または外部アカウントで登録'
-                                          : 'または外部アカウントでログイン')
-                                      : 'または外部アカウントでログイン',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: Colors.black45,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const Expanded(child: Divider()),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: OutlinedButton(
-                              onPressed: isBusy
-                                  ? null
-                                  : () => _signInWithProvider(OAuthProvider.apple),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.apple, size: 20),
-                                  const SizedBox(width: 8),
+                                  // Display Apple private relay emails as a friendly label
+                                  (() {
+                                    final email = user?.email ?? '';
+                                    final displayAccount = email.contains('privaterelay.appleid.com')
+                                        ? _t('Appleアカウントでログイン中', 'Signed in with Apple')
+                                        : (email.isNotEmpty
+                                            ? email
+                                            : _t('Apple / Google アカウントで利用中', 'Using an Apple / Google account'));
+                                    return Text(
+                                      displayAccount,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    );
+                                  })(),
+                                  const SizedBox(height: 8),
                                   Text(
-                                    widget.showSignUpTab
-                                        ? (_showSignUp ? 'Appleで登録' : 'Appleでログイン')
-                                        : 'Appleでログイン',
+                                    _t(
+                                      'このアカウントでデータを引き継げます。機種変更時も同じアカウントでログインすれば復元できます。',
+                                      'Your data is linked to this account. Log in with the same account on a new device to restore it.',
+                                    ),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: Colors.black54,
+                                      height: 1.5,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: OutlinedButton(
-                              onPressed: isBusy
-                                  ? null
-                                  : () => _signInWithProvider(OAuthProvider.google),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.g_mobiledata, size: 24),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.showSignUpTab
-                                        ? (_showSignUp ? 'Googleで登録' : 'Googleでログイン')
-                                        : 'Googleでログイン',
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (_infoMessage != null) ...[
-                            const SizedBox(height: 14),
-                            Text(
-                              _infoMessage!,
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.black54,
-                                fontWeight: FontWeight.w600,
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: OutlinedButton(
+                                onPressed: isBusy
+                                    ? null
+                                    : () async {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (dialogContext) {
+                                            return Dialog(
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(20),
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.logout, size: 36, color: Colors.black87),
+                                                    const SizedBox(height: 12),
+                                                    Text(
+                                                      _t('ログアウトしますか？', 'Log out?'),
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      _t('現在のアカウントからログアウトします', 'You will be logged out of this account.'),
+                                                      textAlign: TextAlign.center,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        color: Colors.black54,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 20),
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: OutlinedButton(
+                                                            onPressed: () => Navigator.pop(dialogContext, false),
+                                                            style: OutlinedButton.styleFrom(
+                                                              foregroundColor: Colors.black45,
+                                                              side: const BorderSide(color: Color(0xFFE0E0E0)),
+                                                              shape: RoundedRectangleBorder(
+                                                                borderRadius: BorderRadius.circular(12),
+                                                              ),
+                                                            ),
+                                                            child: Text(_t('キャンセル', 'Cancel')),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 10),
+                                                        Expanded(
+                                                          child: ElevatedButton(
+                                                            onPressed: () => Navigator.pop(dialogContext, true),
+                                                            style: ElevatedButton.styleFrom(
+                                                              backgroundColor: Colors.redAccent,
+                                                              elevation: 0,
+                                                              shape: RoundedRectangleBorder(
+                                                                borderRadius: BorderRadius.circular(12),
+                                                              ),
+                                                            ),
+                                                            child: Text(_t('ログアウト', 'Log out')),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+
+                                        if (confirm != true) return;
+
+                                        await Supabase.instance.client.auth.signOut();
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(_t('ログアウトしました', 'Logged out.')),
+                                          ),
+                                        );
+                                        setState(() {});
+                                      },
+                                child: Text(_t('ログアウト', 'Log out')),
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                    ],
-                  ),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.cloud_download_outlined, size: 20),
+                                const SizedBox(width: 6),
+                                Text(
+                                  widget.showSignUpTab
+                                      ? (_showSignUp ? _t('アカウントを登録', 'Create account') : _t('アカウントにログイン', 'Log in to account'))
+                                      : _t('アカウントにログイン', 'Log in to account'),
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              widget.showSignUpTab
+                                  ? (_showSignUp
+                                      ? _t(
+                                          '登録すると、今のデータを引き継いだまま機種変更時も同じアカウントで使えます。',
+                                          'Create an account to keep your current data and use it on a new device later.',
+                                        )
+                                      : _t(
+                                          '登録済みのアカウントでログインすると、保存済みデータをこの端末に同期できます。',
+                                          'Log in with your account to sync saved data to this device.',
+                                        ))
+                                  : _t(
+                                      '登録済みのアカウントでログインすると、保存済みデータをこの端末に同期できます。',
+                                      'Log in with your account to sync saved data to this device.',
+                                    ),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.black54,
+                                height: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8F9FC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFEDEDED)),
+                              ),
+                              child: Text(
+                                widget.showSignUpTab
+                                    ? (_showSignUp
+                                        ? _t(
+                                            '新規登録では、今のデータをそのまま引き継いでアカウントを作成します。',
+                                            'Sign up keeps your current data and links it to your account.',
+                                          )
+                                        : _t(
+                                            'ログインでは、登録済みアカウントのデータをこの端末へ同期します。',
+                                            'Log in to sync your saved account data to this device.',
+                                          ))
+                                    : _t(
+                                        'ログインでは、登録済みアカウントのデータをこの端末へ同期します。',
+                                        'Log in to sync your saved account data to this device.',
+                                      ),
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            if (widget.showSignUpTab) ...[
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF4F4F4),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _showSignUp = true;
+                                            _errorMessage = null;
+                                            _infoMessage = null;
+                                            _clearFieldErrors();
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: _showSignUp
+                                                ? Colors.white
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            _t('新規登録', 'Sign up'),
+                                            textAlign: TextAlign.center,
+                                            style: theme.textTheme.bodyMedium?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: _showSignUp
+                                                  ? Colors.black87
+                                                  : Colors.black45,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _showSignUp = false;
+                                            _errorMessage = null;
+                                            _infoMessage = null;
+                                            _clearFieldErrors();
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: !_showSignUp
+                                                ? Colors.white
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            _t('ログイン', 'Log in'),
+                                            textAlign: TextAlign.center,
+                                            style: theme.textTheme.bodyMedium?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: !_showSignUp
+                                                  ? Colors.black87
+                                                  : Colors.black45,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            Column(
+                              children: [
+                                TextField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  autofillHints: const [AutofillHints.email],
+                                  decoration: InputDecoration(
+                                    labelText: _t('メールアドレス', 'Email'),
+                                    border: const OutlineInputBorder(),
+                                    errorText: _emailError,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _passwordController,
+                                  obscureText: _obscurePassword,
+                                  autofillHints: const [AutofillHints.password],
+                                  decoration: InputDecoration(
+                                    labelText: _t('パスワード', 'Password'),
+                                    helperText: _showSignUp ? _t('6文字以上', 'At least 6 characters') : null,
+                                    errorText: _passwordError,
+                                    border: const OutlineInputBorder(),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_off
+                                            : Icons.visibility,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscurePassword = !_obscurePassword;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: ElevatedButton(
+                                    onPressed: isBusy ? null : _submitWithEmail,
+                                    child: Text(
+                                      widget.showSignUpTab
+                                          ? (_showSignUp ? _t('メールで登録', 'Sign up with email') : _t('メールでログイン', 'Log in with email'))
+                                          : _t('メールでログイン', 'Log in with email'),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    const Expanded(child: Divider()),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      child: Text(
+                                        widget.showSignUpTab
+                                            ? (_showSignUp
+                                                ? _t('または外部アカウントで登録', 'Or sign up with')
+                                                : _t('または外部アカウントでログイン', 'Or log in with'))
+                                            : _t('または外部アカウントでログイン', 'Or log in with'),
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: Colors.black45,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const Expanded(child: Divider()),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: OutlinedButton(
+                                    onPressed: isBusy
+                                        ? null
+                                        : () => _signInWithProvider(OAuthProvider.apple),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.apple, size: 20),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          widget.showSignUpTab
+                                              ? (_showSignUp ? _t('Appleで登録', 'Sign up with Apple') : _t('Appleでログイン', 'Log in with Apple'))
+                                              : _t('Appleでログイン', 'Log in with Apple'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 52,
+                                  child: OutlinedButton(
+                                    onPressed: isBusy
+                                        ? null
+                                        : () => _signInWithProvider(OAuthProvider.google),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.g_mobiledata, size: 24),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          widget.showSignUpTab
+                                              ? (_showSignUp ? _t('Googleで登録', 'Sign up with Google') : _t('Googleでログイン', 'Log in with Google'))
+                                              : _t('Googleでログイン', 'Log in with Google'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (_infoMessage != null) ...[
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    _infoMessage!,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: Colors.black54,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
                 ),
                 const SizedBox(height: 16),
                 if (_isSyncingAccountData) ...[
                   const SizedBox(height: 14),
                   Text(
-                    'ログイン後のデータ同期を行っています…',
+                    _t('ログイン後のデータ同期を行っています…', 'Syncing your data after log in...'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.black54,
@@ -685,8 +908,8 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
                         const SizedBox(height: 14),
                         Text(
                           _isSyncingAccountData
-                              ? 'データを同期しています...'
-                              : (_showSignUp ? '処理中です...' : 'ログイン中です...'),
+                              ? _t('データを同期しています...', 'Syncing data...')
+                              : (_showSignUp ? _t('処理中です...', 'Processing...') : _t('ログイン中です...', 'Logging in...')),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),

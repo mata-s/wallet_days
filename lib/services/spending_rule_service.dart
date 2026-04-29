@@ -134,181 +134,176 @@ class SpendingRuleService {
     required ExpenseJudgeResult judgeResult,
   }) {
     final normalizedCategory = categoryName.trim();
+    final categoryLower = normalizedCategory.toLowerCase();
     final tags = judgeResult.tags;
 
     if (tags.contains(ExpenseJudgeTag.cafe)) {
-      if (normalizedCategory == 'カフェ') return CategoryFit.fit;
-      if (normalizedCategory == '食費') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['カフェ', 'cafe', 'coffee'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['食費', 'food', 'groceries'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.convenience)) {
-      if (normalizedCategory == 'コンビニ') return CategoryFit.fit;
-      if (normalizedCategory == '食費') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['コンビニ', 'convenience', 'convenience store'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['食費', 'food', 'groceries'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.dining)) {
-      if (normalizedCategory == '外食') return CategoryFit.fit;
-      if (normalizedCategory == '食費') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['外食', 'dining', 'restaurant', 'restaurants', 'eating out'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['食費', 'food', 'groceries'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.supermarket)) {
-      if (normalizedCategory == '食費' || normalizedCategory == 'スーパー') {
+      if (_categoryIn(categoryLower, const ['食費', 'スーパー', 'food', 'grocery', 'groceries', 'supermarket'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '日用品') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['日用品', 'daily goods', 'household', 'household goods'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.drinking)) {
-      if (normalizedCategory == '飲み' || normalizedCategory == '居酒屋') {
+      if (_categoryIn(categoryLower, const ['飲み', '居酒屋', 'drinking', 'bar', 'pub'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '外食' || normalizedCategory == '交際費') {
+      if (_categoryIn(categoryLower, const ['外食', '交際費', 'dining', 'social', 'socializing'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.fashion)) {
-      if (normalizedCategory == '服' || normalizedCategory == 'ファッション') {
+      if (_categoryIn(categoryLower, const ['服', 'ファッション', 'fashion', 'clothes', 'clothing', 'apparel'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '美容' || normalizedCategory == '趣味') {
+      if (_categoryIn(categoryLower, const ['美容', '趣味', 'beauty', 'hobby', 'hobbies'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.dailyGoods)) {
-      if (normalizedCategory == '日用品') return CategoryFit.fit;
-      if (normalizedCategory == '食費' || normalizedCategory == 'スーパー') {
+      if (_categoryIn(categoryLower, const ['日用品', 'daily goods', 'household', 'household goods'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['食費', 'スーパー', 'food', 'grocery', 'groceries', 'supermarket'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.onlineShopping)) {
-      if (normalizedCategory == 'ネットショッピング' ||
-          normalizedCategory == '通販') {
+      if (_categoryIn(categoryLower, const ['ネットショッピング', '通販', 'online shopping', 'e-commerce', 'ecommerce'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '日用品' || normalizedCategory == '服') {
+      if (_categoryIn(categoryLower, const ['日用品', '服', 'daily goods', 'household', 'clothing', 'fashion'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == '趣味' || normalizedCategory == 'その他') {
+      if (_categoryIn(categoryLower, const ['趣味', 'hobby', 'hobbies']) || _categoryIsOther(categoryLower)) {
         return CategoryFit.mismatch;
       }
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.movie)) {
-      if (normalizedCategory == '映画' ||
-          normalizedCategory == '娯楽' ||
-          normalizedCategory == 'エンタメ' ||
-          normalizedCategory == 'レジャー') {
+      if (_categoryIn(categoryLower, const ['映画', '娯楽', 'エンタメ', 'レジャー', 'movie', 'movies', 'cinema', 'entertainment', 'leisure'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '趣味' || normalizedCategory == 'デート') {
+      if (_categoryIn(categoryLower, const ['趣味', 'デート', 'hobby', 'hobbies', 'date'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.karaoke)) {
-      if (normalizedCategory == 'カラオケ' ||
-          normalizedCategory == '娯楽' ||
-          normalizedCategory == 'エンタメ' ||
-          normalizedCategory == 'レジャー') {
+      if (_categoryIn(categoryLower, const ['カラオケ', '娯楽', 'エンタメ', 'レジャー', 'karaoke', 'entertainment', 'leisure'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '趣味' ||
-          normalizedCategory == 'ストレス発散') {
+      if (_categoryIn(categoryLower, const ['趣味', 'ストレス発散', 'hobby', 'hobbies', 'stress relief'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.arcade)) {
-      if (normalizedCategory == 'ゲームセンター' ||
-          normalizedCategory == '娯楽' ||
-          normalizedCategory == 'エンタメ' ||
-          normalizedCategory == 'レジャー' ||
-          normalizedCategory == '遊び') {
+      if (_categoryIn(categoryLower, const ['ゲームセンター', '娯楽', 'エンタメ', 'レジャー', '遊び', 'arcade', 'game center', 'entertainment', 'leisure', 'play'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == '趣味' || normalizedCategory == 'デート') {
+      if (_categoryIn(categoryLower, const ['趣味', 'デート', 'hobby', 'hobbies', 'date'])) {
         return CategoryFit.acceptable;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.entertainment)) {
-      if (normalizedCategory == '娯楽' || normalizedCategory == '趣味') {
+      if (_categoryIn(categoryLower, const ['娯楽', '趣味', 'エンタメ', 'レジャー', 'entertainment', 'leisure', 'hobby', 'hobbies'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.travel)) {
-      if (normalizedCategory == '旅行') return CategoryFit.fit;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['旅行', 'travel', 'trip', 'hotel'])) return CategoryFit.fit;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.hobby)) {
-      if (normalizedCategory == '趣味') return CategoryFit.fit;
-      if (normalizedCategory == '娯楽') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['趣味', 'hobby', 'hobbies'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['娯楽', 'エンタメ', 'entertainment', 'leisure'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.beauty)) {
-      if (normalizedCategory == '美容') return CategoryFit.fit;
-      if (normalizedCategory == '日用品') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.mismatch;
+      if (_categoryIn(categoryLower, const ['美容', 'beauty', 'self-care', 'self care', 'cosmetics'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['日用品', 'daily goods', 'household'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.mismatch;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.health)) {
-      if (normalizedCategory == '医療') return CategoryFit.fit;
-      if (normalizedCategory == 'その他') return CategoryFit.acceptable;
+      if (_categoryIn(categoryLower, const ['医療', '健康', '薬', 'health', 'medical', 'medicine', 'pharmacy'])) return CategoryFit.fit;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.acceptable;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.transport)) {
-      if (normalizedCategory == '交通') return CategoryFit.fit;
-      if (normalizedCategory == '旅行') return CategoryFit.acceptable;
-      if (normalizedCategory == 'その他') return CategoryFit.acceptable;
+      if (_categoryIn(categoryLower, const ['交通', '交通費', '電車', 'バス', 'ガソリン', '駐車場', 'transport', 'transportation', 'train', 'bus', 'taxi', 'gas', 'parking'])) return CategoryFit.fit;
+      if (_categoryIn(categoryLower, const ['旅行', 'travel', 'trip'])) return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.acceptable;
       return CategoryFit.acceptable;
     }
 
     if (tags.contains(ExpenseJudgeTag.ceremony)) {
-      if (normalizedCategory == '冠婚葬祭' ||
-          normalizedCategory == 'お祝い' ||
-          normalizedCategory == '贈り物') {
+      if (_categoryIn(categoryLower, const ['冠婚葬祭', 'お祝い', '贈り物', 'ceremony', 'gift', 'gifts', 'celebration'])) {
         return CategoryFit.fit;
       }
-      if (normalizedCategory == 'その他') return CategoryFit.acceptable;
+      if (_categoryIsOther(categoryLower)) return CategoryFit.acceptable;
       return CategoryFit.acceptable;
     }
 
-    return normalizedCategory == 'その他'
+    return _categoryIsOther(categoryLower)
         ? CategoryFit.mismatch
         : CategoryFit.acceptable;
+  }
+
+  static bool _categoryIn(String categoryLower, List<String> candidates) {
+    return candidates.any((c) => categoryLower == c.toLowerCase());
+  }
+
+  static bool _categoryIsOther(String categoryLower) {
+    return _categoryIn(categoryLower, const ['その他', 'other', 'misc', 'miscellaneous']);
   }
 
   static PaceStatus _evaluatePaceStatus({

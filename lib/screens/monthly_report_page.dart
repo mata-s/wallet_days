@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MonthlyReportPage extends StatefulWidget {
   final VoidCallback? onTapDetail;
-
-  // 実データ取得用（指定があれば MonthlyReportService から取得）
   final DateTime periodStart;
   final DateTime periodEnd;
 
@@ -43,11 +42,39 @@ class _MonthlyReportListBundle {
 class _MonthlyReportPageState extends State<MonthlyReportPage> {
   Future<_MonthlyReportListBundle>? _pageFuture;
   int _currentReportIndex = 0;
+  String? _languageOverride; // 'ja' or 'en'
 
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
     _setupFuture();
+  }
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String _formatMoney(int value) {
+    if (_currentLang() == 'ja') {
+      return MonthlyReportPage.yen(value);
+    }
+    final dollars = value / 100.0;
+    return '\$${dollars.toStringAsFixed(2)}';
   }
 
   @override
@@ -142,7 +169,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
         final summaryComment =
             (report['summary_text'] as String?)?.trim().isNotEmpty == true
                 ? report['summary_text'] as String
-                : 'まだ月のレポートがありません。';
+                : _t('まだ月のレポートがありません。', 'No monthly report yet.');
         final adviceText = ((report['advice_text'] as String?) ?? '').trim();
         final badges = ((report['badges_json'] as List?) ?? const [])
             .whereType<Map>()
@@ -154,7 +181,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
 
         return _buildContent(
           context,
-          title: '月のレポート',
+          title: _t('月のレポート', 'Monthly report'),
           periodText: _resolvedPeriodText(report),
           totalBudget: totalBudget,
           totalSpent: totalSpent,
@@ -190,7 +217,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('月レポート'),
+        title: Text(_t('月レポート', 'Monthly report')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -219,7 +246,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '月のレポートを読み込み中...',
+                    _t('月のレポートを読み込み中...', 'Loading monthly report...'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -237,7 +264,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('月レポート'),
+        title: Text(_t('月レポート', 'Monthly report')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -253,7 +280,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '月のレポートを表示できませんでした',
+                  _t('月のレポートを表示できませんでした', 'Could not display the monthly report'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -282,7 +309,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('月レポート'),
+        title: Text(_t('月レポート', 'Monthly report')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -294,52 +321,59 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: const Color(0xFFF0EAE5)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                Text(
-                  '月のレポート',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (!isViewingLatest) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '過去の期間を表示中',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.black54,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: reportCount > 0 ? () => _goToPreviousPeriod(reportCount) : null,
-                      icon: const Icon(Icons.chevron_left_rounded),
-                      label: const Text('前の期間'),
-                    ),
-                    if (!isViewingLatest) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _currentReportIndex = 0;
-                          });
-                        },
-                        icon: const Icon(Icons.restart_alt_rounded),
-                        label: const Text('最新に戻る'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 96),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t('月のレポート', 'Monthly report'),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (!isViewingLatest) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _t('過去の期間を表示中', 'Viewing a past period'),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: reportCount > 0 ? () => _goToPreviousPeriod(reportCount) : null,
+                            icon: const Icon(Icons.chevron_left_rounded),
+                            label: Text(_t('前の期間', 'Previous period')),
+                          ),
+                          if (!isViewingLatest) ...[
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _currentReportIndex = 0;
+                                });
+                              },
+                              icon: const Icon(Icons.restart_alt_rounded),
+                              label: Text(_t('最新に戻る', 'Back to latest')),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _t('この期間の月レポートはまだ作成されていません。', 'A monthly report has not been created for this period yet.'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.black54,
+                          height: 1.5,
+                        ),
                       ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'この期間の月レポートはまだ作成されていません。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.black54,
-                    height: 1.5,
                   ),
                 ),
               ],
@@ -380,7 +414,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('月レポート'),
+        title: Text(_t('月レポート', 'Monthly report')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -445,7 +479,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     OutlinedButton.icon(
                       onPressed: () => _goToPreviousPeriod(reportCount),
                       icon: const Icon(Icons.chevron_left_rounded),
-                      label: const Text('前の期間'),
+                      label: Text(_t('前の期間', 'Previous period')),
                     ),
                     if (!isViewingLatest) ...[
                       const SizedBox(width: 8),
@@ -456,7 +490,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                           });
                         },
                         icon: const Icon(Icons.restart_alt_rounded),
-                        label: const Text('最新に戻る'),
+                        label: Text(_t('最新に戻る', 'Back to latest')),
                       ),
                     ],
                   ],
@@ -467,6 +501,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     title: currentTitle,
                     reason: currentTitleReason,
                     rarity: currentTitleRarity,
+                    languageCode: _currentLang(),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -474,15 +509,15 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   children: [
                     Expanded(
                       child: _MetricCard(
-                        label: '予算',
-                        value: MonthlyReportPage.yen(totalBudget),
+                        label: _t('予算', 'Budget'),
+                        value: _formatMoney(totalBudget),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _MetricCard(
-                        label: '支出',
-                        value: MonthlyReportPage.yen(totalSpent),
+                        label: _t('支出', 'Spent'),
+                        value: _formatMoney(totalSpent),
                       ),
                     ),
                   ],
@@ -495,17 +530,20 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     bestStreak: bestStreak,
                     achievedCount: achievedCount,
                     totalCount: totalCount,
+                    languageCode: _currentLang(),
                   ),
                 ],
                 const SizedBox(height: 10),
                 _RemainingCard(
                   remaining: remaining,
                   isOver: isOver,
+                  formatMoney: _formatMoney,
+                  languageCode: _currentLang(),
                 ),
                 const SizedBox(height: 16),
                 if (badges.isNotEmpty) ...[
                   Text(
-                    '今月のバッヂ',
+                    _t('今月のバッヂ', 'This month’s badges'),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.black54,
                       fontWeight: FontWeight.w600,
@@ -520,12 +558,12 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                           (badge) => _BadgeChip(
                             title: (badge['title'] as String?)?.trim().isNotEmpty == true
                                 ? badge['title'] as String
-                                : 'バッヂ',
+                                : _t('バッヂ', 'Badge'),
                             rarity: ((badge['rarity'] as String?) ?? 'common').trim(),
                             onTap: () {
                               final title = (badge['title'] as String?)?.trim().isNotEmpty == true
                                   ? badge['title'] as String
-                                  : 'バッヂ';
+                                  : _t('バッヂ', 'Badge');
                               final description = ((badge['description'] as String?) ?? '').trim();
                               final reason = ((badge['reason'] as String?) ?? '').trim();
 
@@ -557,7 +595,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                                           ),
                                         if (description.isEmpty && reason.isEmpty)
                                           Text(
-                                            'このバッヂの詳細はまだありません。',
+                                            _t('このバッヂの詳細はまだありません。', 'No details are available for this badge yet.'),
                                             style: dialogTheme.textTheme.bodyMedium,
                                           ),
                                       ],
@@ -565,7 +603,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.of(dialogContext).pop(),
-                                        child: const Text('閉じる'),
+                                        child: Text(_t('閉じる', 'Close')),
                                       ),
                                     ],
                                   );
@@ -579,42 +617,53 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   const SizedBox(height: 16),
                 ],
                 Container(
-  width: double.infinity,
-  padding: const EdgeInsets.all(16),
-  decoration: BoxDecoration(
-    color: const Color(0xFFFFF8F4),
-    borderRadius: BorderRadius.circular(18),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        '今月のまとめ',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: Colors.black54,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      const SizedBox(height: 8),
-      if (hasAdvice) ...[
-        Text(
-          adviceText,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            height: 1.65,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 10),
-      ],
-      Text(
-        summaryComment,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          height: 1.65,
-        ),
-      ),
-    ],
-  ),
-),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8F4),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t('今月のまとめ', 'Monthly summary'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (hasAdvice) ...[
+                        Text(
+                          adviceText,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.65,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      Text(
+                        summaryComment,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.65,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IgnorePointer(
+                    child: Image.asset(
+                      'assets/images/usually.png',
+                      width: 92,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
                 if (widget.onTapDetail != null) ...[
                   const SizedBox(height: 14),
                   SizedBox(
@@ -622,7 +671,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                     height: 48,
                     child: OutlinedButton(
                       onPressed: widget.onTapDetail,
-                      child: const Text('月のレポートを見る'),
+                      child: Text(_t('月のレポートを見る', 'View monthly report')),
                     ),
                   ),
                 ],
@@ -679,11 +728,19 @@ class _MetricCard extends StatelessWidget {
 class _RemainingCard extends StatelessWidget {
   final int remaining;
   final bool isOver;
+  final String Function(int value) formatMoney;
+  final String languageCode;
 
   const _RemainingCard({
     required this.remaining,
     required this.isOver,
+    required this.formatMoney,
+    required this.languageCode,
   });
+
+  String _t(String ja, String en) {
+    return languageCode == 'ja' ? ja : en;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -705,14 +762,14 @@ class _RemainingCard extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              isOver ? '予算オーバー' : '残り予算',
+              isOver ? _t('予算オーバー', 'Over budget') : _t('残り予算', 'Remaining'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
           Text(
-            MonthlyReportPage.yen(remaining),
+            formatMoney(remaining),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w800,
             ),
@@ -796,6 +853,7 @@ class _RankCard extends StatelessWidget {
   final int bestStreak;
   final int achievedCount;
   final int totalCount;
+  final String languageCode;
 
   const _RankCard({
     required this.rankLabel,
@@ -803,7 +861,12 @@ class _RankCard extends StatelessWidget {
     required this.bestStreak,
     required this.achievedCount,
     required this.totalCount,
+    required this.languageCode,
   });
+
+  String _t(String ja, String en) {
+    return languageCode == 'ja' ? ja : en;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -833,7 +896,7 @@ class _RankCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '現在ランク：$rankLabel',
+                  _t('現在ランク：$rankLabel', 'Current rank: $rankLabel'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -846,9 +909,9 @@ class _RankCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _MiniInfoChip(label: '達成', value: '$achievedCount/$totalCount回'),
-              _MiniInfoChip(label: '連続', value: '${currentStreak}回'),
-              _MiniInfoChip(label: '最高', value: '${bestStreak}回'),
+              _MiniInfoChip(label: _t('達成', 'Cleared'), value: _t('$achievedCount/$totalCount回', '$achievedCount/$totalCount')),
+              _MiniInfoChip(label: _t('連続', 'Streak'), value: _t('${currentStreak}回', '$currentStreak')),
+              _MiniInfoChip(label: _t('最高', 'Best'), value: _t('${bestStreak}回', '$bestStreak')),
             ],
           ),
         ],
@@ -901,12 +964,18 @@ class _TitleCard extends StatelessWidget {
   final String title;
   final String reason;
   final String rarity;
+  final String languageCode;
 
   const _TitleCard({
     required this.title,
     required this.reason,
     required this.rarity,
+    required this.languageCode,
   });
+
+  String _t(String ja, String en) {
+    return languageCode == 'ja' ? ja : en;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -959,7 +1028,7 @@ class _TitleCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今月の称号',
+                  _t('今月の称号', 'This month’s title'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.black54,
                     fontWeight: FontWeight.w700,

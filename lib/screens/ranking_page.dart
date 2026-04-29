@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RankingPage extends StatefulWidget {
   final List<Expense> expenses;
@@ -28,6 +30,47 @@ class _RankingPageState extends State<RankingPage> {
   _RangeType _range = _RangeType.current;
   // int _selectedYear = DateTime.now().year;
   int _selectedYear = getNow().year;
+  String? _languageOverride; // 'ja' or 'en'
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguagePreference();
+  }
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String _formatMoney(int amount) {
+    if (_currentLang() == 'ja') {
+      return '¥${widget.formatYen(amount)}';
+    }
+
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(amount / 100);
+  }
+
+  String _formatYear(int year) {
+    return _currentLang() == 'ja' ? '$year年' : '$year';
+  }
 
   List<Expense> get _filtered {
     // final now = DateTime.now();
@@ -57,7 +100,7 @@ class _RankingPageState extends State<RankingPage> {
 
     for (final expense in _filtered) {
       final store = expense.storeName.trim().isEmpty
-          ? '不明な支出先'
+          ? _t('不明な支出先', 'Unknown store')
           : expense.storeName.trim();
 
       totals.update(
@@ -103,47 +146,81 @@ class _RankingPageState extends State<RankingPage> {
   String _label(_RangeType type) {
     switch (type) {
       case _RangeType.current:
-        return 'この期間';
+        return _t('この期間', 'This period');
       case _RangeType.all:
-        return 'これまで';
+        return _t('これまで', 'All time');
       case _RangeType.lastMonth:
-        return '先月';
+        return _t('先月', 'Last month');
       case _RangeType.yearly:
-        return '年間別';
+        return _t('年間別', 'Year');
     }
   }
 
   String _buildInsightComment(List<_StoreRankingItem> ranking, String compareText) {
     if (ranking.isEmpty) {
-      return 'まだ支出が少ないので、使い方の傾向はこれから見えてきそうです。';
+      return _t(
+        'まだ支出が少ないから、使い方のクセはこれから見えてきそうだよ。',
+        'There is not much spending data yet, so your patterns should become clearer over time.',
+      );
     }
 
     final top = ranking.first;
     final topPercent = (top.ratio * 100).round();
 
     if (_range == _RangeType.lastMonth) {
-      return '${top.category}への支出が先月いちばん多く、全体の$topPercent%でした。先月の使い方を振り返る時にまず見たいポイントです。';
+      return _t(
+        '先月は${top.category}がいちばん多くて、全体の$topPercent%だったよ。振り返るならまずここから見よう。',
+        '${top.category} was your biggest spending area last month, making up $topPercent% of the total. Start here when reviewing your spending.',
+      );
     }
 
     if (_range == _RangeType.yearly) {
-      return '${_selectedYear}年は${top.category}への支出がいちばん多く、全体の$topPercent%を占めています。年間で見るとお金の使い方のクセがかなり見えやすいです。';
+      return _t(
+        '${_selectedYear}年は${top.category}がいちばん多くて、全体の$topPercent%を占めているよ。年間で見るとクセが見えやすいね。',
+        'In ${_formatYear(_selectedYear)}, ${top.category} is your biggest spending area at $topPercent% of the total. Yearly view makes patterns easier to spot.',
+      );
     }
 
     if (compareText.isNotEmpty) {
       if (compareText.contains('+')) {
-        return '${top.category}への支出が現在トップです。$compareText なので、最近は少し使うペースが上がっているかもしれません。';
+        return _t(
+          '${top.category}が今のトップだよ。$compareText だから、最近少しペースが上がっているかも。',
+          '${top.category} is currently your top spending area. $compareText, so your pace may be picking up a bit.',
+        );
       }
-      return '${top.category}への支出が現在トップです。$compareText なので、前より少し抑えられていていい流れです。';
+      return _t(
+        '${top.category}が今のトップだよ。$compareText だから、前より少し抑えられていていい流れだね。',
+        '${top.category} is currently your top spending area. $compareText, so you are spending a little less than before. Nice flow.',
+      );
     }
 
     if (_range == _RangeType.all) {
-      return 'これまででいちばん多い支出先は${top.category}でした。全体の$topPercent%を占めていて、使い方の傾向がはっきり出ています。';
+      return _t(
+        'これまででいちばん多い支出先は${top.category}だったよ。全体の$topPercent%で、使い方のクセがはっきり出てるね。',
+        '${top.category} is your biggest spending area so far, making up $topPercent% of the total. Your spending pattern is pretty clear here.',
+      );
     }
 
-    return '${top.category}への支出が現在トップで、全体の$topPercent%を占めています。まずはこの支出先を基準に振り返ると流れがつかみやすいです。';
+    return _t(
+      '${top.category}が今のトップで、全体の$topPercent%を占めているよ。まずはここを基準に振り返ると流れがつかみやすいね。',
+      '${top.category} is currently on top at $topPercent% of your spending. Use this as the starting point for your review.',
+    );
   }
 
   String _rankLabel(int index) {
+    if (_currentLang() != 'ja') {
+      switch (index) {
+        case 0:
+          return '1st';
+        case 1:
+          return '2nd';
+        case 2:
+          return '3rd';
+        default:
+          return '${index + 1}th';
+      }
+    }
+
     switch (index) {
       case 0:
         return '1位';
@@ -164,12 +241,12 @@ class _RankingPageState extends State<RankingPage> {
     final compareText = compareRate == 0
         ? ''
         : compareRate > 0
-            ? '先月より +${(compareRate * 100).round()}%'
-            : '先月より ${(compareRate * 100).round()}%';
+            ? _t('先月より +${(compareRate * 100).round()}%', '+${(compareRate * 100).round()}% vs last month')
+            : _t('先月より ${(compareRate * 100).round()}%', '${(compareRate * 100).round()}% vs last month');
     final insightComment = _buildInsightComment(ranking, compareText);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('何に使っている？')),
+      appBar: AppBar(title: Text(_t('何に使っている？', 'Where is it going?'))),
       body: Column(
         children: [
           Padding(
@@ -215,7 +292,7 @@ class _RankingPageState extends State<RankingPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '$_selectedYear年',
+                            _formatYear(_selectedYear),
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                           const Icon(Icons.keyboard_arrow_down),
@@ -240,13 +317,29 @@ class _RankingPageState extends State<RankingPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Icon(Icons.insights_outlined, size: 18),
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Image.asset(
+                          'assets/images/usually.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      Text(
-                        'ひとこと分析',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.insights_outlined, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              _t('ひとこと分析', 'Quick insight'),
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -275,7 +368,7 @@ class _RankingPageState extends State<RankingPage> {
           ),
           Expanded(
             child: ranking.isEmpty
-                ? const Center(child: Text('データがありません'))
+                ? Center(child: Text(_t('データがありません', 'No data available')))
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: List.generate(ranking.length, (index) {
@@ -320,7 +413,7 @@ class _RankingPageState extends State<RankingPage> {
                                     ),
                                   ),
                                 ),
-                                Text('¥${widget.formatYen(item.amount)}'),
+                                Text(_formatMoney(item.amount)),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -365,11 +458,11 @@ class _RankingPageState extends State<RankingPage> {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('キャンセル', style: TextStyle(fontSize: 16)),
+                      child: Text(_t('キャンセル', 'Cancel'), style: const TextStyle(fontSize: 16)),
                     ),
-                    const Text(
-                      '年を選択',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    Text(
+                      _t('年を選択', 'Select year'),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     TextButton(
                       onPressed: () {
@@ -378,9 +471,9 @@ class _RankingPageState extends State<RankingPage> {
                         });
                         Navigator.pop(context);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -400,7 +493,7 @@ class _RankingPageState extends State<RankingPage> {
                   children: years.map((year) {
                     return Center(
                       child: Text(
-                        '$year年',
+                        _formatYear(year),
                         style: const TextStyle(fontSize: 22),
                       ),
                     );

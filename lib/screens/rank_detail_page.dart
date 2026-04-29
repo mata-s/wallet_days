@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:saiyome/services/rank_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RankDetailPage extends StatefulWidget {
   final RankResult? rankResult;
@@ -18,9 +19,34 @@ class _RankDetailPageState extends State<RankDetailPage>
   late final AnimationController _badgeController;
   late final Animation<double> _badgeScale;
 
+  String? _languageOverride; // 'ja' or 'en'
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String _months(int value) {
+    return _currentLang() == 'ja' ? '${value}ヶ月' : '$value mo.';
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
     _badgeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
@@ -105,17 +131,17 @@ class _RankDetailPageState extends State<RankDetailPage>
   String _nextRankLabel(String rankKey) {
     switch (rankKey) {
       case 'starter':
-        return 'ブロンズ';
+        return _t('ブロンズ', 'Bronze');
       case 'bronze':
-        return 'シルバー';
+        return _t('シルバー', 'Silver');
       case 'silver':
-        return 'ゴールド';
+        return _t('ゴールド', 'Gold');
       case 'gold':
-        return 'プラチナ';
+        return _t('プラチナ', 'Platinum');
       case 'platinum':
-        return 'ダイヤ';
+        return _t('ダイヤ', 'Diamond');
       default:
-        return '最高ランク到達中';
+        return _t('最高ランク到達中', 'Top rank reached');
     }
   }
 
@@ -124,47 +150,94 @@ class _RankDetailPageState extends State<RankDetailPage>
     final rate = rank.successRate;
     final percent = (rate * 100).round();
 
-    switch (rank.rankKey) {
-      case 'starter':
-        return 'まずは今の期間を達成するとブロンズになります。';
-      case 'bronze':
-        if (achieved < 2) {
-          return 'あと${2 - achieved}ヶ月達成すると、シルバー条件に近づきます。';
-        }
-        if (rate < 0.50) {
-          return '達成率は今$percent%です。50%以上でシルバーです。';
-        }
-        return 'シルバー条件まであと少しです。';
-      case 'silver':
-        final needPeriods = achieved < 6 ? 6 - achieved : 0;
-        if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月達成して、達成率70%以上でゴールドです。';
-        }
-        if (rate < 0.70) {
-          return '達成率は今$percent%です。70%以上でゴールドです。';
-        }
-        return 'ゴールド条件まであと少しです。';
-      case 'gold':
-        final needPeriods = achieved < 9 ? 9 - achieved : 0;
-        if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月達成して、達成率80%以上でプラチナです。';
-        }
-        if (rate < 0.80) {
-          return '達成率は今$percent%です。80%以上でプラチナです。';
-        }
-        return 'プラチナ条件まであと少しです。';
-      case 'platinum':
-        final needPeriods = achieved < 12 ? 12 - achieved : 0;
-        if (needPeriods > 0) {
-          return 'あと$needPeriodsヶ月達成して、達成率90%以上でダイヤです。';
-        }
-        if (rate < 0.90) {
-          return '達成率は今$percent%です。90%以上でダイヤです。';
-        }
-        return 'ダイヤ条件まであと少しです。';
-      default:
-        return '現在最高ランクです。この調子で維持していきましょう。';
+switch (rank.rankKey) {
+  case 'starter':
+    return _t(
+      'まずは今の期間を守れたら、ブロンズが見えてくるよ。',
+      'Protect this period first, and Bronze will be within reach.',
+    );
+
+  case 'bronze':
+    if (achieved < 2) {
+      return _t(
+        'あと${2 - achieved}ヶ月守れたら、シルバーにぐっと近づくよ。',
+        '${2 - achieved} more good months, and Silver gets much closer.',
+      );
     }
+    if (rate < 0.50) {
+      return _t(
+        '今の達成率は$percent%。半分を超えたらシルバーだよ。',
+        'Your success rate is $percent%. Pass 50%, and Silver is yours.',
+      );
+    }
+    return _t(
+      'シルバーまであと少し。財布も見守ってるよ。',
+      'You are close to Silver. Your wallet is watching proudly.',
+    );
+
+  case 'silver':
+    final needPeriods = achieved < 6 ? 6 - achieved : 0;
+    if (needPeriods > 0) {
+      return _t(
+        'あと$needPeriodsヶ月守れたら、ゴールドの扉が開くよ。達成率70%以上も目指そう。',
+        '$needPeriods more good months will open the door to Gold. Aim for a 70% success rate too.',
+      );
+    }
+    if (rate < 0.70) {
+      return _t(
+        '今の達成率は$percent%。70%を超えたらゴールドだよ。',
+        'Your success rate is $percent%. Reach 70%, and Gold is waiting.',
+      );
+    }
+    return _t(
+      'ゴールドまであと少し。かなりいい流れだよ。',
+      'You are close to Gold. This is a really good flow.',
+    );
+
+  case 'gold':
+    final needPeriods = achieved < 9 ? 9 - achieved : 0;
+    if (needPeriods > 0) {
+      return _t(
+        'あと$needPeriodsヶ月積み上げたら、プラチナが見えてくるよ。達成率80%以上も意識しよう。',
+        '$needPeriods more solid months, and Platinum starts to show. Aim for an 80% success rate too.',
+      );
+    }
+    if (rate < 0.80) {
+      return _t(
+        '今の達成率は$percent%。80%を超えたらプラチナだよ。',
+        'Your success rate is $percent%. Reach 80%, and Platinum is next.',
+      );
+    }
+    return _t(
+      'プラチナまであと少し。財布、かなり頼もしく見てるよ。',
+      'You are close to Platinum. Your wallet is seriously impressed.',
+    );
+
+  case 'platinum':
+    final needPeriods = achieved < 12 ? 12 - achieved : 0;
+    if (needPeriods > 0) {
+      return _t(
+        'あと$needPeriodsヶ月守り切れたら、ダイヤが見えてくるよ。達成率90%以上も狙おう。',
+        '$needPeriods more strong months, and Diamond comes into view. Aim for a 90% success rate too.',
+      );
+    }
+    if (rate < 0.90) {
+      return _t(
+        '今の達成率は$percent%。90%を超えたらダイヤだよ。',
+        'Your success rate is $percent%. Reach 90%, and Diamond is yours.',
+      );
+    }
+    return _t(
+      'ダイヤまであと少し。ここまで来たの、かなりすごいよ。',
+      'You are close to Diamond. Getting this far is seriously impressive.',
+    );
+
+  default:
+    return _t(
+      '今は最高ランク。財布も拍手してるよ。この調子でいこう。',
+      'You are at the top rank. Your wallet is cheering for you. Keep it going.',
+    );
+}
   }
 
   double _nextRankProgress(RankResult rank) {
@@ -195,21 +268,46 @@ class _RankDetailPageState extends State<RankDetailPage>
     }
   }
 
+  String _localizedRankLabel(RankResult rank) {
+    if (_currentLang() == 'ja') return rank.rankLabel;
+
+    switch (rank.rankKey) {
+      case 'diamond':
+        return 'Diamond';
+      case 'platinum':
+        return 'Platinum';
+      case 'gold':
+        return 'Gold';
+      case 'silver':
+        return 'Silver';
+      case 'bronze':
+        return 'Bronze';
+      default:
+        return 'Starter';
+    }
+  }
+
+  String _localizedRankComment(RankResult rank) {
+    return _currentLang() == 'ja' ? rank.comment : rank.commentEn;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rank = widget.rankResult;
+    final rankLabel = rank == null ? '' : _localizedRankLabel(rank);
+    final rankComment = rank == null ? '' : _localizedRankComment(rank);
     final nextRankLabel = rank == null ? '' : _nextRankLabel(rank.rankKey);
     final nextRankHint = rank == null ? '' : _nextRankHint(rank);
     final nextRankProgress = rank == null ? 0.0 : _nextRankProgress(rank);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ランク詳細'),
+        title: Text(_t('ランク詳細', 'Rank details')),
         centerTitle: true,
       ),
       body: rank == null
-          ? const Center(child: Text('データがありません'))
+          ? Center(child: Text(_t('データがありません', 'No data available')))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -229,14 +327,14 @@ class _RankDetailPageState extends State<RankDetailPage>
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        rank.rankLabel,
+                        rankLabel,
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '現在のランク',
+                        _t('現在のランク', 'Current rank'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.black54,
                         ),
@@ -252,15 +350,15 @@ class _RankDetailPageState extends State<RankDetailPage>
                   children: [
                     Expanded(
                       child: _infoCard(
-                        title: '連続達成',
-                        value: '${rank.streak}ヶ月',
+                        title: _t('連続達成', 'Current streak'),
+                        value: _months(rank.streak),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _infoCard(
-                        title: '最高連続',
-                        value: '${rank.bestStreak}ヶ月',
+                        title: _t('最高連続', 'Best streak'),
+                        value: _months(rank.bestStreak),
                       ),
                     ),
                   ],
@@ -272,22 +370,22 @@ class _RankDetailPageState extends State<RankDetailPage>
                   children: [
                     Expanded(
                       child: _infoCard(
-                        title: '成功率',
+                        title: _t('成功率', 'Success rate'),
                         value: '${(rank.successRate * 100).round()}%',
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _infoCard(
-                        title: '達成した月数',
-                        value: '${rank.achievedCount}ヶ月',
+                        title: _t('達成した月数', 'Successful months'),
+                        value: _months(rank.achievedCount),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _infoCard(
-                        title: '記録月数',
-                        value: '${rank.totalCount}ヶ月',
+                        title: _t('記録月数', 'Tracked months'),
+                        value: _months(rank.totalCount),
                       ),
                     ),
                   ],
@@ -306,7 +404,7 @@ class _RankDetailPageState extends State<RankDetailPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '次のランクまで',
+                        _t('次のランクまで', 'Next rank progress'),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -348,20 +446,38 @@ class _RankDetailPageState extends State<RankDetailPage>
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFF3E3CD)),
                   ),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'ひとこと',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
+                      SizedBox(
+                        width: 58,
+                        height: 58,
+                        child: Image.asset(
+                          'assets/images/leeway.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        rank.comment,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.5,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _t('ひとこと', 'Note'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black54,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _t('$rankComment', '$rankComment'),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                height: 1.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

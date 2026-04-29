@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/income_fixed_cost_setting.dart';
 import 'package:saiyome/models/budget_history.dart';
+import 'package:saiyome/widget_sync_service.dart';
 
 
 class IsarService {
@@ -78,7 +79,17 @@ class IsarService {
     });
 
     await _recalculateBudgetHistoryForDateRange(previousCreatedAt, expense.createdAt);
+    
+    final histories = await getBudgetHistories();
+  if (histories.isNotEmpty) {
+    final current = histories.first;
+    final remaining = current.totalBudget - current.totalExpense;
+    await WidgetSyncService.updateRemainingBudget(
+      remaining,
+      totalBudget: current.totalBudget,
+    );
   }
+}
 
   static Future<void> deleteExpense(int id) async {
     final existing = await isar.expenses.get(id);

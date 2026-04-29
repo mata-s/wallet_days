@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,8 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:saiyome/models/budget_history.dart';
 import 'package:saiyome/services/budget_history_sync_service.dart';
 import 'package:saiyome/utils/time_provider.dart';
+import 'package:saiyome/widget_sync_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -35,6 +38,27 @@ class ThousandsFormatter extends TextInputFormatter {
   }
 }
 
+class DecimalMoneyFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+
+    if (text.isEmpty) {
+      return newValue;
+    }
+
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    if (!valid) {
+      return oldValue;
+    }
+
+    return newValue;
+  }
+}
+
 class BudgetPage extends StatefulWidget {
   const BudgetPage({super.key});
 
@@ -43,14 +67,88 @@ class BudgetPage extends StatefulWidget {
 }
 
 class _BudgetPageState extends State<BudgetPage> {
-  final Map<String, List<String>> _badgeGroups = {
-    '食費・飲食': ['🍚', '🍜', '☕️', '🍔', '🍺', '🍰'],
-    '買い物・生活': ['🏪', '🛒', '🧻', '🧴', '👕', '💄'],
-    '移動・住まい': ['🚃', '🚗', '⛽️', '🏠', '💡', '📱'],
-    '健康・美容': ['💊', '💇‍♀️'],
-    '趣味・娯楽': ['🎮', '🎬', '🎵', '📚', '🎨', '🎯'],
-    'お金・その他': ['🎁', '💰', '💳', '✨'],
-  };
+  Map<String, List<String>> _badgeGroups() {
+    return {
+      _t('食費・飲食', 'Food & drinks'): ['🍚', '🍜', '☕️', '🍔', '🍺', '🍰'],
+      _t('買い物・生活', 'Shopping & daily life'): ['🏪', '🛒', '🧻', '🧴', '👕', '💄'],
+      _t('移動・住まい', 'Transport & home'): ['🚃', '🚗', '⛽️', '🏠', '💡', '📱'],
+      _t('健康・美容', 'Health & beauty'): ['💊', '💇‍♀️'],
+      _t('趣味・娯楽', 'Hobbies & fun'): ['🎮', '🎬', '🎵', '📚', '🎨', '🎯'],
+      _t('お金・その他', 'Money & other'): ['🎁', '💰', '💳', '✨'],
+    };
+  }
+
+  String? _languageOverride; // 'ja' or 'en'
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String _defaultCategoryBadge() {
+    return _currentLang() == 'ja' ? '🍚' : '🛒';
+  }
+
+  int _parseMoneyInput(String text) {
+    final normalized = text.replaceAll(',', '').trim();
+    if (normalized.isEmpty) return 0;
+
+    if (_currentLang() == 'ja') {
+      return int.tryParse(normalized) ?? 0;
+    }
+
+    final value = double.tryParse(normalized);
+    if (value == null) return 0;
+    return (value * 100).round();
+  }
+
+  String _formatMoneyInput(int amount) {
+    if (amount <= 0) return '';
+
+    if (_currentLang() == 'ja') {
+      return NumberFormat('#,###').format(amount);
+    }
+
+    final dollars = amount / 100;
+    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+  }
+
+  String _formatMoneyDisplay(int amount) {
+    if (_currentLang() == 'ja') {
+      return '¥${NumberFormat('#,###').format(amount)}';
+    }
+
+    final dollars = amount / 100;
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(dollars);
+  }
+
+  List<TextInputFormatter> _moneyInputFormatters() {
+    if (_currentLang() == 'ja') {
+      return [
+        FilteringTextInputFormatter.digitsOnly,
+        ThousandsFormatter(),
+      ];
+    }
+
+    return [DecimalMoneyFormatter()];
+  }
 
   final TextEditingController _totalBudgetController =
       TextEditingController();
@@ -61,7 +159,7 @@ class _BudgetPageState extends State<BudgetPage> {
     {
       'nameController': TextEditingController(),
       'budgetController': TextEditingController(),
-      'badge': '🍚',
+      'badge': '🛒',
     },
   ];
 
@@ -84,6 +182,7 @@ class _BudgetPageState extends State<BudgetPage> {
   @override
 void initState() {
   super.initState();
+  _loadLanguagePreference();
   _loadBudgetSetting();
   _loadIncomeFixedCostSetting();
 }
@@ -126,9 +225,7 @@ Future<void> _loadBudgetSetting() async {
   }
   _categoryControllers.clear();
 
-  _totalBudgetController.text = budgetSetting.totalBudget == 0
-      ? ''
-      : NumberFormat('#,###').format(budgetSetting.totalBudget);
+  _totalBudgetController.text = _formatMoneyInput(budgetSetting.totalBudget);
 
   _useCategoryBudget = budgetSetting.useCategoryBudget;
   _manualBudgetBuffer = (budgetSetting.totalBudget -
@@ -137,9 +234,7 @@ Future<void> _loadBudgetSetting() async {
             (sum, category) => sum + category.budget,
           ))
       .clamp(0, 1 << 30);
-  _extraAmountController.text = _manualBudgetBuffer == 0
-      ? ''
-      : NumberFormat('#,###').format(_manualBudgetBuffer);
+  _extraAmountController.text = _formatMoneyInput(_manualBudgetBuffer);
 
   _cycleStartDay =
       budgetSetting.cycleStartDay == 0 ? 1 : budgetSetting.cycleStartDay;
@@ -148,16 +243,14 @@ Future<void> _loadBudgetSetting() async {
     _categoryControllers.add({
       'nameController': TextEditingController(),
       'budgetController': TextEditingController(),
-      'badge': '🍚',
+      'badge': _defaultCategoryBadge(),
     });
   } else {
     for (final category in budgetSetting.categories) {
       _categoryControllers.add({
         'nameController': TextEditingController(text: category.name),
         'budgetController': TextEditingController(
-          text: category.budget == 0
-              ? ''
-              : NumberFormat('#,###').format(category.budget),
+          text: _formatMoneyInput(category.budget),
         ),
         'badge': category.badge,
       });
@@ -205,15 +298,13 @@ DateTime _currentPeriodStart(DateTime now) {
     int total = 0;
     for (final item in _categoryControllers) {
       final budgetController = item['budgetController'] as TextEditingController;
-      final text = budgetController.text.replaceAll(',', '').trim();
-      final value = int.tryParse(text) ?? 0;
-      total += value;
+      total += _parseMoneyInput(budgetController.text);
     }
     return total;
   }
 
   int get _currentTotalBudgetValue {
-    return int.tryParse(_totalBudgetController.text.replaceAll(',', '').trim()) ?? 0;
+    return _parseMoneyInput(_totalBudgetController.text);
   }
 
   int get _remainingUsableBudget {
@@ -225,14 +316,13 @@ DateTime _currentPeriodStart(DateTime now) {
   }
 
   int get _budgetExtraAmount {
-    return int.tryParse(_extraAmountController.text.replaceAll(',', '').trim()) ?? 0;
+    return _parseMoneyInput(_extraAmountController.text);
   }
 
   void _setExtraAmountValue(int value) {
     final safeValue = value < 0 ? 0 : value;
     _manualBudgetBuffer = safeValue;
-    _extraAmountController.text =
-        safeValue == 0 ? '' : NumberFormat('#,###').format(safeValue);
+    _extraAmountController.text = _formatMoneyInput(safeValue);
   }
 
   void _syncExtraAmountFromTotalBudget() {
@@ -244,9 +334,7 @@ DateTime _currentPeriodStart(DateTime now) {
     if (!_useCategoryBudget) return;
 
     final nextTotal = _categoryBudgetSum + _budgetExtraAmount;
-    _totalBudgetController.text = nextTotal == 0
-        ? ''
-        : NumberFormat('#,###').format(nextTotal);
+    _totalBudgetController.text = _formatMoneyInput(nextTotal);
   }
 
   void _syncTotalBudgetWithCategorySum({bool preserveCurrentDifference = true}) {
@@ -257,9 +345,7 @@ DateTime _currentPeriodStart(DateTime now) {
     }
 
     final nextTotal = _categoryBudgetSum + _budgetExtraAmount;
-    _totalBudgetController.text = nextTotal == 0
-        ? ''
-        : NumberFormat('#,###').format(nextTotal);
+    _totalBudgetController.text = _formatMoneyInput(nextTotal);
   }
 
   @override
@@ -274,11 +360,11 @@ DateTime _currentPeriodStart(DateTime now) {
   }
 
   Future<void> _saveBudget() async  {
-    final totalBudgetText = _totalBudgetController.text.replaceAll(',', '').trim();
+    final totalBudgetText = _totalBudgetController.text.trim();
 
     if (!_useCategoryBudget && totalBudgetText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('全体予算を入力してください')),
+        SnackBar(content: Text(_t('全体予算を入力してください', 'Enter your total budget.'))),
       );
       return;
     }
@@ -291,7 +377,7 @@ DateTime _currentPeriodStart(DateTime now) {
       final badge = item['badge'] as String;
 
       final name = nameController.text.trim();
-      final budgetText = budgetController.text.replaceAll(',', '').trim();
+      final budgetText = budgetController.text.trim();
 
       final isNameEmpty = name.isEmpty;
       final isBudgetEmpty = budgetText.isEmpty;
@@ -302,14 +388,14 @@ DateTime _currentPeriodStart(DateTime now) {
 
       if (isNameEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('カテゴリー名を入力してください')),
+          SnackBar(content: Text(_t('カテゴリー名を入力してください', 'Enter a category name.'))),
         );
         return;
       }
 
       if (isBudgetEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('「$name」の予算を入力してください')),
+          SnackBar(content: Text(_t('「$name」の予算を入力してください', 'Enter a budget for "$name".'))),
         );
         return;
       }
@@ -321,7 +407,7 @@ DateTime _currentPeriodStart(DateTime now) {
       });
     }
 
-final totalBudget = int.tryParse(totalBudgetText) ?? 0;
+final totalBudget = _parseMoneyInput(totalBudgetText);
 
 final budgetSetting = BudgetSetting()
   ..totalBudget = totalBudget
@@ -337,7 +423,7 @@ print('[BudgetPage] save pendingCycleStartDay=${budgetSetting.pendingCycleStartD
 budgetSetting.categories = validCategories.map((e) {
   return BudgetCategory()
     ..name = e['name'] ?? ''
-    ..budget = int.tryParse(e['budget'] ?? '0') ?? 0
+    ..budget = _parseMoneyInput(e['budget'] ?? '0')
     ..badge = e['badge'] ?? '✨';
 }).toList();
 
@@ -400,6 +486,74 @@ budgetSetting.categories = validCategories.map((e) {
       ..categories = budgetSetting.categories;
 
     await IsarService.saveBudgetSetting(refreshedSetting);
+    final widgetCategoryCandidates = refreshedSetting.categories
+        .where((category) => category.budget > 0)
+        .map((category) {
+          final used = expenses
+              .where((expense) => category.name == expense.category)
+              .fold<int>(0, (sum, expense) => sum + expense.amount);
+          final usageRate = category.budget <= 0 ? 0.0 : used / category.budget;
+
+          return {
+            'name': category.name,
+            'remaining': category.budget - used,
+            'badge': category.badge,
+            'budget': category.budget,
+            'usageRate': usageRate,
+          };
+        })
+        .toList();
+
+    final widgetDangerCategories = widgetCategoryCandidates
+        .where((category) {
+          final remaining = category['remaining'] as int;
+          final usageRate = category['usageRate'] as double;
+          return remaining < 0 || usageRate >= 0.75;
+        })
+        .toList()
+      ..sort((a, b) {
+        final aRemaining = a['remaining'] as int;
+        final bRemaining = b['remaining'] as int;
+        final aUsageRate = a['usageRate'] as double;
+        final bUsageRate = b['usageRate'] as double;
+
+        final byRemaining = aRemaining.compareTo(bRemaining);
+        if (byRemaining != 0) return byRemaining;
+
+        return bUsageRate.compareTo(aUsageRate);
+      });
+
+    final widgetCategories = <Map<String, dynamic>>[
+      ...widgetDangerCategories.take(2),
+    ];
+
+    if (widgetCategories.length < 2) {
+      final randomNormalCategories = widgetCategoryCandidates
+          .where((category) => !widgetCategories.any(
+                (selected) => selected['name'] == category['name'],
+              ))
+          .toList()
+        ..shuffle(Random());
+
+      widgetCategories.addAll(
+        randomNormalCategories.take(2 - widgetCategories.length),
+      );
+    }
+
+    await WidgetSyncService.updateRemainingBudget(
+      totalBudget - recalculatedTotalExpense,
+      totalBudget: totalBudget,
+      dangerCategories: widgetCategories
+          .map(
+            (category) => WidgetDangerCategory(
+              name: category['name'] as String,
+              remaining: category['remaining'] as int,
+              badge: category['badge'] as String,
+              budget: category['budget'] as int,
+            ),
+          )
+          .toList(),
+    );
 
     print(
       '[BudgetPage] saved history id=${history.id} '
@@ -439,14 +593,14 @@ budgetSetting.categories = validCategories.map((e) {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'キャンセル',
-                        style: TextStyle(fontSize: 16),
+                      child: Text(
+                        _t('キャンセル', 'Cancel'),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Text(
-                      '開始日を選択',
-                      style: TextStyle(
+                    Text(
+                      _t('開始日を選択', 'Select start day'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -458,9 +612,9 @@ budgetSetting.categories = validCategories.map((e) {
                         });
                         Navigator.pop(context);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -481,7 +635,7 @@ budgetSetting.categories = validCategories.map((e) {
                     final day = index + 1;
                     return Center(
                       child: Text(
-                        '毎月 $day 日から',
+                        _t('毎月 $day 日から', 'From day $day each month'),
                         style: const TextStyle(fontSize: 22),
                       ),
                     );
@@ -537,21 +691,24 @@ budgetSetting.categories = validCategories.map((e) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '開始日',
+            _t('開始日', 'Start day'),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '現在の集計期間をこの開始日に合わせて更新します',
+            _t(
+              '現在の集計期間をこの開始日に合わせて更新します',
+              'Update your current period based on this start day',
+            ),
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.black54,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '例: $previewText',
+            _t('例: $previewText', 'Example: $previewText'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.black45,
               fontWeight: FontWeight.w600,
@@ -575,7 +732,7 @@ budgetSetting.categories = validCategories.map((e) {
                 children: [
                   Expanded(
                     child: Text(
-                      '毎月 $_cycleStartDay 日から',
+                      _t('毎月 $_cycleStartDay 日から', 'From day $_cycleStartDay each month'),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -601,14 +758,14 @@ budgetSetting.categories = validCategories.map((e) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '収入と固定費',
+            _t('収入と固定費', 'Income & fixed costs'),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '使えるお金の前提',
+            _t('使えるお金の前提', 'Base for your budget'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.black54,
             ),
@@ -653,7 +810,7 @@ budgetSetting.categories = validCategories.map((e) {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '確認する',
+                      _t('確認する', 'Check'),
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -676,7 +833,7 @@ budgetSetting.categories = validCategories.map((e) {
   return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('予算設定'),
+        title: Text(_t('予算設定', 'Budget settings')),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -699,14 +856,17 @@ child: Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
     Text(
-      '今月の全体予算',
+      _t('今月の全体予算', 'Monthly budget'),
       style: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.bold,
       ),
     ),
     const SizedBox(height: 6),
     Text(
-      'カテゴリを振り分ける前に、今月の上限を決めます。',
+      _t(
+        'カテゴリを振り分ける前に、今月の上限を決めます。',
+        'Set your monthly limit before assigning categories.',
+      ),
       style: theme.textTheme.bodyMedium?.copyWith(
         color: Colors.black54,
         height: 1.4,
@@ -726,7 +886,7 @@ child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '今月の使える予算',
+              _t('今月の使える予算', 'Available this month'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: Colors.black54,
                 fontWeight: FontWeight.w600,
@@ -734,14 +894,14 @@ child: Column(
             ),
             const SizedBox(height: 4),
             Text(
-              '¥${NumberFormat('#,###').format(_usableBudgetBase)}',
+              _formatMoneyDisplay(_usableBudgetBase),
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              'あと使える金額',
+              _t('あと使える金額', 'Remaining amount'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: Colors.black54,
                 fontWeight: FontWeight.w600,
@@ -750,8 +910,8 @@ child: Column(
             const SizedBox(height: 4),
             Text(
               _remainingUsableBudget >= 0
-                  ? '¥${NumberFormat('#,###').format(_remainingUsableBudget)}'
-                  : '-¥${NumberFormat('#,###').format(_remainingUsableBudget.abs())}',
+                  ? _formatMoneyDisplay(_remainingUsableBudget)
+                  : '-${_formatMoneyDisplay(_remainingUsableBudget.abs())}',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: _remainingUsableBudget < 0 ? Colors.red : Colors.black87,
@@ -764,11 +924,8 @@ child: Column(
     ],
     TextField(
       controller: _totalBudgetController,
-      keyboardType: TextInputType.number,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        ThousandsFormatter(),
-      ],
+      keyboardType: TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: _moneyInputFormatters(),
       onChanged: (_) {
         if (!_useCategoryBudget) {
           setState(() {});
@@ -779,12 +936,15 @@ child: Column(
         });
       },
       decoration: InputDecoration(
-        labelText: '予算',
-        hintText: '50,000',
-        suffixText: '円',
+        labelText: _t('予算', 'Budget'),
+        hintText: _t('50,000', '2,000'),
+        suffixText:  _t('円', '\$'),
         border: const OutlineInputBorder(),
         helperText: _useCategoryBudget
-            ? 'カテゴリ合計 ¥${NumberFormat('#,###').format(_categoryBudgetSum)} を反映中'
+            ? _t(
+              'カテゴリ合計 ${_formatMoneyDisplay(_categoryBudgetSum)} を反映中',
+              'Reflecting category total ${_formatMoneyDisplay(_categoryBudgetSum)}',
+              )
             : null,
       ),
     ),
@@ -803,7 +963,7 @@ child: Column(
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('カテゴリ別予算を設定する'),
+                  title: Text(_t('カテゴリ別予算を設定する', 'Use category budgets')),
                   value: _useCategoryBudget,
                   onChanged: (value) {
                     setState(() {
@@ -847,7 +1007,7 @@ child: Column(
                                     context: context,
                                     builder: (context) {
                                       return AlertDialog(
-                                        title: const Text('バッジを選択'),
+                                        title: Text(_t('バッジを選択', 'Select badge')),
                                         content: SizedBox(
                                           width: double.maxFinite,
                                           child: SingleChildScrollView(
@@ -855,7 +1015,7 @@ child: Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               mainAxisSize: MainAxisSize.min,
-                                              children: _badgeGroups.entries.map((entry) {
+                                              children: _badgeGroups().entries.map((entry) {
                                                 return Padding(
                                                   padding: const EdgeInsets.only(bottom: 16),
                                                   child: Column(
@@ -911,7 +1071,7 @@ child: Column(
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(context),
-                                            child: const Text('閉じる'),
+                                            child: Text(_t('閉じる', 'Close')),
                                           ),
                                         ],
                                       );
@@ -948,8 +1108,8 @@ child: Column(
                               Expanded(
                                 child: TextField(
                                   controller: nameController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'カテゴリ名',
+                                  decoration: InputDecoration(
+                                    labelText: _t('カテゴリ名', 'Category name'),
                                     border: OutlineInputBorder(),
                                   ),
                                 ),
@@ -961,7 +1121,7 @@ child: Column(
                                       if (_categoryControllers.length == 1) {
                                         nameController.clear();
                                         budgetController.clear();
-                                        item['badge'] = '🍚';
+                                        item['badge'] = _defaultCategoryBadge();
                                       } else {
                                         nameController.dispose();
                                         budgetController.dispose();
@@ -974,18 +1134,15 @@ child: Column(
                                     });
                                   },
                                   icon: const Icon(Icons.delete_outline),
-                                  tooltip: 'カテゴリ削除',
+                                  tooltip: _t('カテゴリ削除', 'Delete category'),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           TextField(
                             controller: budgetController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              ThousandsFormatter(),
-                            ],
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: _moneyInputFormatters(),
                             onChanged: (_) {
                               setState(() {
                                 _syncTotalBudgetWithCategorySum(
@@ -993,11 +1150,11 @@ child: Column(
                                 );
                               });
                             },
-                            decoration: const InputDecoration(
-                              labelText: '予算',
-                              hintText: '20,000',
-                              suffixText: '円',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: _t('予算', 'Budget'),
+                              hintText: _t('2,000', '100'),
+                              suffixText:  _t('円', '\$'),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           if (isNarrow) ...[
@@ -1010,7 +1167,7 @@ child: Column(
                                     if (_categoryControllers.length == 1) {
                                       nameController.clear();
                                       budgetController.clear();
-                                      item['badge'] = '🍚';
+                                      item['badge'] = _defaultCategoryBadge();
                                     } else {
                                       nameController.dispose();
                                       budgetController.dispose();
@@ -1023,7 +1180,7 @@ child: Column(
                                   });
                                 },
                                 icon: const Icon(Icons.delete_outline, size: 18),
-                                label: const Text('削除'),
+                                label: Text(_t('削除', 'Delete'))
                               ),
                             ),
                           ],
@@ -1042,7 +1199,7 @@ child: Column(
                           _categoryControllers.add({
                             'nameController': TextEditingController(),
                             'budgetController': TextEditingController(),
-                            'badge': '🍚',
+                            'badge': _defaultCategoryBadge(),
                           });
                           _syncTotalBudgetWithCategorySum(
                             preserveCurrentDifference: false,
@@ -1050,7 +1207,7 @@ child: Column(
                         });
                       },
                       icon: const Icon(Icons.add_circle_outline),
-                      tooltip: 'カテゴリ追加',
+                      tooltip: _t('カテゴリ追加', 'Add category'),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1066,7 +1223,7 @@ child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'カテゴリ外で使える金額',
+                          _t('カテゴリ外で使える金額', 'Extra budget (outside categories)'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.black54,
                             fontWeight: FontWeight.w600,
@@ -1075,22 +1232,19 @@ child: Column(
                         const SizedBox(height: 8),
                         TextField(
                           controller: _extraAmountController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            ThousandsFormatter(),
-                          ],
+                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: _moneyInputFormatters(),
                           onChanged: (_) {
                             if (!_useCategoryBudget) return;
                             setState(() {
                               _syncTotalBudgetFromExtraAmount();
                             });
                           },
-                          decoration: const InputDecoration(
-                            labelText: 'カテゴリ外で使える金額',
-                            hintText: '2,000',
-                            suffixText: '円',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: _t('カテゴリ外で使える金額', 'Extra budget'),
+                            hintText: _t('2,000', '100'),
+                            suffixText:  _t('円', '\$'),
+                            border: const OutlineInputBorder(),
                           ),
                         ),
                       ],
@@ -1105,7 +1259,7 @@ child: Column(
             height: 52,
             child: FilledButton(
               onPressed: _saveBudget,
-              child: const Text('予算を保存'),
+              child: Text(_t('予算を保存', 'Save budget')),
             ),
           ),
         ],
@@ -1123,8 +1277,8 @@ child: Column(
                   children: [
                     GestureDetector(
                       onTap: () => FocusScope.of(context).unfocus(),
-                      child: const Text(
-                        '完了',
+                      child: Text(
+                        _t('完了', 'Done'),
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.blue,

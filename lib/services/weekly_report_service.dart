@@ -11,6 +11,7 @@ class WeeklyReport {
   final int topCategoryAmount;
   final List<WeeklyCategorySummary> categories;
   final String comment;
+  final String commentEn;
 
   const WeeklyReport({
     required this.start,
@@ -23,6 +24,7 @@ class WeeklyReport {
     required this.topCategoryAmount,
     required this.categories,
     required this.comment,
+    required this.commentEn,
   });
 }
 
@@ -94,6 +96,13 @@ class WeeklyReportService {
         topCategory: topCategory,
         topCategoryAmount: topCategoryAmount,
       ),
+      commentEn: _buildCommentEn(
+        totalExpense: totalExpense,
+        previousWeekExpense: previousTotalExpense,
+        changeRate: changeRate,
+        topCategory: topCategory,
+        topCategoryAmount: topCategoryAmount,
+      ),
     );
   }
 
@@ -133,27 +142,61 @@ class WeeklyReportService {
     required String? topCategory,
     required int topCategoryAmount,
   }) {
-    if (totalExpense == 0) {
-      return '今週はまだ支出が記録されていません。無理のないペースで続けていきましょう。';
-    }
+    final totalText = _formatYen(totalExpense);
 
     final topCategoryText = topCategory != null
-        ? '特に「$topCategory」が${_formatYen(topCategoryAmount)}と多めでした。'
+        ? '「$topCategory」が${_formatYen(topCategoryAmount)}で一番多かったよ。'
         : '';
 
+    if (totalExpense == 0) {
+      return '「今週はまだ使ってないね。このペース、一緒に作っていこう。」';
+    }
+
     if (previousWeekExpense == 0) {
-      return '今週は${_formatYen(totalExpense)}の支出でした。$topCategoryText';
+      return '「今週は$totalText使ったね。$topCategoryText 少しずつ流れをつかんでいこう。」';
     }
 
     if (changeRate >= 0.2) {
-      return '先週より支出が増えています。今週は${_formatYen(totalExpense)}でした。$topCategoryText';
+      return '「今週は$totalTextで、先週より少し増えてるね。$topCategoryText 少しだけ気にしてみようか。」';
     }
 
     if (changeRate <= -0.2) {
-      return '先週よりいいペースで抑えられています。今週は${_formatYen(totalExpense)}でした。$topCategoryText';
+      return '「今週は$totalTextで、いい感じに抑えられてるよ。$topCategoryText この調子でいこう。」';
     }
 
-    return '先週と近いペースで使えています。今週は${_formatYen(totalExpense)}でした。$topCategoryText';
+    return '「今週は$totalTextで、先週といいペースだね。$topCategoryText このままいけそう。」';
+  }
+
+  static String _buildCommentEn({
+    required int totalExpense,
+    required int previousWeekExpense,
+    required double changeRate,
+    required String? topCategory,
+    required int topCategoryAmount,
+  }) {
+    final totalText = _formatDollar(totalExpense);
+
+    final topCategoryText = topCategory != null
+        ? '$topCategory was the biggest one at ${_formatDollar(topCategoryAmount)}.'
+        : '';
+
+    if (totalExpense == 0) {
+      return '“You haven’t spent anything yet this week. Let’s build this pace together.”';
+    }
+
+    if (previousWeekExpense == 0) {
+      return '“You spent $totalText this week. $topCategoryText Let’s start getting a feel for your flow.”';
+    }
+
+    if (changeRate >= 0.2) {
+      return '“You spent $totalText this week, a bit more than last week. $topCategoryText Let’s keep a small eye on it.”';
+    }
+
+    if (changeRate <= -0.2) {
+      return '“You spent $totalText this week, and kept it nicely lower than last week. $topCategoryText Let’s keep this going.”';
+    }
+
+    return '“You spent $totalText this week, about the same pace as last week. $topCategoryText Looks steady.”';
   }
 
   static String _formatYen(int value) {
@@ -161,5 +204,16 @@ class WeeklyReportService {
           RegExp(r'\B(?=(\d{3})+(?!\d))'),
           (match) => ',',
         )}円';
+  }
+
+  static String _formatDollar(int value) {
+    final dollars = value / 100;
+    final fixed = dollars.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final whole = parts[0].replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+    return '\$$whole.${parts[1]}';
   }
 }

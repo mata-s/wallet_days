@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:saiyome/services/income_fixed_cost_sync_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MoneyThousandsFormatter extends TextInputFormatter {
   final _formatter = NumberFormat('#,###');
@@ -31,6 +32,27 @@ class MoneyThousandsFormatter extends TextInputFormatter {
   }
 }
 
+class MoneyDecimalFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+
+    if (text.isEmpty) {
+      return newValue;
+    }
+
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    if (!valid) {
+      return oldValue;
+    }
+
+    return newValue;
+  }
+}
+
 class IncomeFixedCostPage extends StatefulWidget {
   final int initialIncome;
   final int initialFixedCost;
@@ -52,32 +74,95 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
   final List<Map<String, TextEditingController>> _fixedCostControllers = [];
   final NumberFormat _formatter = NumberFormat('#,###');
 
-  int get _income =>
-      int.tryParse(_incomeController.text.replaceAll(',', '').trim()) ?? 0;
+  String? _languageOverride; // 'ja' or 'en'
 
-int get _manualFixedCostAmount =>
-    int.tryParse(_fixedCostManualController.text.replaceAll(',', '').trim()) ?? 0;
-
-int get _itemizedFixedCostTotal {
-  int total = 0;
-  for (final item in _fixedCostControllers) {
-    final controller = item['amount']!;
-    final value = int.tryParse(controller.text.replaceAll(',', '').trim()) ?? 0;
-    total += value;
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
   }
-  return total;
-}
 
-int get _fixedCost => _manualFixedCostAmount + _itemizedFixedCostTotal;
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
 
-void _syncManualFixedCostFromDisplayedTotal() {
-  final displayedTotal =
-      int.tryParse(_fixedCostTotalController.text.replaceAll(',', '').trim()) ?? 0;
-  final manualAmount = displayedTotal - _itemizedFixedCostTotal;
-  _fixedCostManualController.text = manualAmount > 0
-      ? _formatter.format(manualAmount)
-      : '';
-}
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+
+  int _parseMoneyInput(String text) {
+    final normalized = text.replaceAll(',', '').trim();
+    if (normalized.isEmpty) return 0;
+
+    if (_currentLang() == 'ja') {
+      return int.tryParse(normalized) ?? 0;
+    }
+
+    final value = double.tryParse(normalized);
+    if (value == null) return 0;
+    return (value * 100).round();
+  }
+
+  String _formatMoneyInput(int amount) {
+    if (amount <= 0) return '';
+
+    if (_currentLang() == 'ja') {
+      return _formatter.format(amount);
+    }
+
+    final dollars = amount / 100;
+    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+  }
+
+  String _formatMoneyDisplay(int amount) {
+    if (_currentLang() == 'ja') {
+      return '¥${_formatter.format(amount)}';
+    }
+
+    final dollars = amount / 100;
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(dollars);
+  }
+
+  List<TextInputFormatter> _moneyInputFormatters() {
+    if (_currentLang() == 'ja') {
+      return [
+        FilteringTextInputFormatter.digitsOnly,
+        MoneyThousandsFormatter(),
+      ];
+    }
+
+    return [MoneyDecimalFormatter()];
+  }
+
+  int get _income => _parseMoneyInput(_incomeController.text);
+
+  int get _manualFixedCostAmount => _parseMoneyInput(_fixedCostManualController.text);
+
+  int get _itemizedFixedCostTotal {
+    int total = 0;
+    for (final item in _fixedCostControllers) {
+      final controller = item['amount']!;
+      total += _parseMoneyInput(controller.text);
+    }
+    return total;
+  }
+
+  int get _fixedCost => _manualFixedCostAmount + _itemizedFixedCostTotal;
+
+  void _syncManualFixedCostFromDisplayedTotal() {
+    final displayedTotal = _parseMoneyInput(_fixedCostTotalController.text);
+    final manualAmount = displayedTotal - _itemizedFixedCostTotal;
+    _fixedCostManualController.text = _formatMoneyInput(manualAmount);
+  }
 
   int get _usableAmount {
     final value = _income - _fixedCost;
@@ -87,6 +172,7 @@ void _syncManualFixedCostFromDisplayedTotal() {
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
 
     _incomeController.addListener(_handleChanged);
     _fixedCostTotalController.addListener(_handleChanged);
@@ -137,15 +223,14 @@ void _syncManualFixedCostFromDisplayedTotal() {
         ? widget.initialFixedCost
         : (saved?.fixedCostTotal ?? 0);
 
-    _incomeController.text =
-        initialIncome > 0 ? _formatter.format(initialIncome) : '';
+    _incomeController.text = _formatMoneyInput(initialIncome);
 
     if (saved != null && saved.items.isNotEmpty) {
       for (final entry in saved.items) {
         _fixedCostControllers.add(
           _createFixedCostItem(
             name: entry.name,
-            amount: entry.amount > 0 ? _formatter.format(entry.amount) : '',
+            amount: _formatMoneyInput(entry.amount),
           ),
         );
       }
@@ -157,14 +242,10 @@ void _syncManualFixedCostFromDisplayedTotal() {
 
     final itemizedTotal = _fixedCostControllers.fold<int>(
       0,
-      (sum, item) =>
-          sum +
-          (int.tryParse(item['amount']!.text.replaceAll(',', '').trim()) ?? 0),
+      (sum, item) => sum + _parseMoneyInput(item['amount']!.text),
     );
     final manualAmount = initialFixedCost - itemizedTotal;
-    _fixedCostManualController.text = manualAmount > 0
-        ? _formatter.format(manualAmount)
-        : '';
+    _fixedCostManualController.text = _formatMoneyInput(manualAmount);
     _syncFixedCostTotalFromSources();
 
     setState(() {});
@@ -178,10 +259,7 @@ void _syncManualFixedCostFromDisplayedTotal() {
           .map(
             (item) => {
               'name': item['name']!.text.trim(),
-              'amount': int.tryParse(
-                    item['amount']!.text.replaceAll(',', '').trim(),
-                  ) ??
-                  0,
+              'amount': _parseMoneyInput(item['amount']!.text),
             },
           )
           .toList(),
@@ -213,8 +291,7 @@ void _syncManualFixedCostFromDisplayedTotal() {
 
 void _syncFixedCostTotalFromSources() {
   final total = _fixedCost;
-  _fixedCostTotalController.text =
-      total == 0 ? '' : _formatter.format(total);
+  _fixedCostTotalController.text = _formatMoneyInput(total);
 }
 
   void _resetSingleFixedCostItem(Map<String, TextEditingController> item) {
@@ -242,10 +319,10 @@ void _syncFixedCostTotalFromSources() {
               Expanded(
                 child: TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: '固定費名',
-                    hintText: '家賃',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _t('固定費名', 'Fixed cost name'),
+                    hintText: _t('家賃', 'Rent'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ),
@@ -263,28 +340,25 @@ void _syncFixedCostTotalFromSources() {
                   });
                 },
                 icon: const Icon(Icons.delete_outline),
-                tooltip: '固定費を削除',
+                tooltip: _t('固定費を削除', 'Delete fixed cost'),
               ),
             ],
           ),
           const SizedBox(height: 8),
           TextField(
             controller: amountController,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              MoneyThousandsFormatter(),
-            ],
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: _moneyInputFormatters(),
             onChanged: (_) {
               setState(() {
                 _syncFixedCostTotalFromSources();
               });
             },
-            decoration: const InputDecoration(
-              labelText: '金額',
-              hintText: '80,000',
-              suffixText: '円',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: _t('金額', 'Amount'),
+              hintText: _t('80,000', '1,200'),
+              suffixText: _t('円', '\$'),
+              border: const OutlineInputBorder(),
             ),
           ),
         ],
@@ -305,10 +379,7 @@ void _syncFixedCostTotalFromSources() {
             .map(
               (item) => {
                 'name': item['name']!.text.trim(),
-                'amount': int.tryParse(
-                      item['amount']!.text.replaceAll(',', '').trim(),
-                    ) ??
-                    0,
+                'amount': _parseMoneyInput(item['amount']!.text),
               },
             )
             .toList(),
@@ -327,11 +398,11 @@ void _syncFixedCostTotalFromSources() {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
-  return Scaffold (
+
+    return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('収入と固定費・貯金'),
+        title: Text(_t('収入と固定費・貯金', 'Income, fixed costs & savings')),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -346,14 +417,17 @@ void _syncFixedCostTotalFromSources() {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今月の前提を決める',
+                  _t('今月の前提を決める', 'Set this month\'s base'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '収入は任意です。固定費や貯金を引いたあとに、今月使えるお金を表示します。',
+                  _t(
+                    '収入は任意です。固定費や貯金を引いたあとに、今月使えるお金を表示します。',
+                    'Income is optional. We show how much you can spend this month after fixed costs and savings.',
+                  ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: Colors.black54,
                     height: 1.4,
@@ -362,26 +436,20 @@ void _syncFixedCostTotalFromSources() {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _incomeController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    MoneyThousandsFormatter(),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: '収入（任意）',
-                    hintText: '200,000',
-                    suffixText: '円',
-                    border: OutlineInputBorder(),
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: _moneyInputFormatters(),
+                  decoration: InputDecoration(
+                    labelText: _t('収入（任意）', 'Income (optional)'),
+                    hintText: _t('200,000', '3,000'),
+                    suffixText: _t('円', '\$'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _fixedCostTotalController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    MoneyThousandsFormatter(),
-                  ],
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: _moneyInputFormatters(),
                   onChanged: (_) {
                     setState(() {
                       _syncManualFixedCostFromDisplayedTotal();
@@ -389,25 +457,31 @@ void _syncFixedCostTotalFromSources() {
                     });
                   },
                   decoration: InputDecoration(
-                    labelText: '固定費・貯金（合計）',
-                    hintText: '70,000',
-                    suffixText: '円',
+                    labelText: _t('固定費・貯金（合計）', 'Fixed costs & savings (total)'),
+                    hintText: _t('70,000', '1,000'),
+                    suffixText: _t('円', '\$'),
                     border: const OutlineInputBorder(),
                     helperText: _itemizedFixedCostTotal > 0
-                        ? '内訳合計 ¥${_formatter.format(_itemizedFixedCostTotal)}'
-                        : '合計で入力できます',
+                        ? _t(
+                            '内訳合計 ${_formatMoneyDisplay(_itemizedFixedCostTotal)}',
+                            'Itemized total ${_formatMoneyDisplay(_itemizedFixedCostTotal)}',
+                          )
+                        : _t('合計で入力できます', 'You can enter a total amount'),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '固定費・貯金',
+                  _t('固定費・貯金', 'Fixed costs & savings'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'まとめて入力した金額と、下の内訳の合計を足して管理できます。',
+                  _t(
+                    'まとめて入力した金額と、下の内訳の合計を足して管理できます。',
+                    'You can manage a total amount together with the itemized costs below.',
+                  ),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.black54,
                     height: 1.4,
@@ -425,7 +499,7 @@ void _syncFixedCostTotalFromSources() {
                       });
                     },
                     icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('固定費を追加'),
+                    label: Text(_t('固定費を追加', 'Add fixed cost')),
                   ),
                 ),
               ],
@@ -443,7 +517,7 @@ void _syncFixedCostTotalFromSources() {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '今月使えるお金',
+                  _t('今月使えるお金', 'Available this month'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: Colors.black87,
@@ -451,7 +525,7 @@ void _syncFixedCostTotalFromSources() {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '¥${_formatter.format(_usableAmount)}',
+                  _formatMoneyDisplay(_usableAmount),
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
@@ -469,14 +543,20 @@ void _syncFixedCostTotalFromSources() {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '収入 ¥${_formatter.format(_income)}',
+                        _t(
+                          '収入 ${_formatMoneyDisplay(_income)}',
+                          'Income ${_formatMoneyDisplay(_income)}',
+                        ),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '固定費・貯金 ¥${_formatter.format(_fixedCost)}',
+                        _t(
+                          '固定費・貯金 ${_formatMoneyDisplay(_fixedCost)}',
+                          'Fixed costs & savings ${_formatMoneyDisplay(_fixedCost)}',
+                        ),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -492,12 +572,12 @@ void _syncFixedCostTotalFromSources() {
             height: 52,
             child: FilledButton(
               onPressed: _save,
-              child: const Text('保存する'),
+              child: Text(_t('保存する', 'Save')),
             ),
           ),
         ],
       ),
-            bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom > 0
+      bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom > 0
           ? Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -511,9 +591,9 @@ void _syncFixedCostTotalFromSources() {
                   children: [
                     GestureDetector(
                       onTap: () => FocusScope.of(context).unfocus(),
-                      child: const Text(
-                        '完了',
-                        style: TextStyle(
+                      child: Text(
+                        _t('完了', 'Done'),
+                        style: const TextStyle(
                           fontSize: 16,
                           color: Colors.blue,
                           fontWeight: FontWeight.bold,

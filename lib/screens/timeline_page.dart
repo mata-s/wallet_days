@@ -1,10 +1,16 @@
+import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:saiyome/models/expense.dart';
+import 'package:saiyome/models/isar_service.dart';
+import 'package:saiyome/widget_sync_service.dart';
 import 'package:saiyome/widgets/future_log_item.dart';
 import 'package:saiyome/widgets/timeline_item.dart';
 import 'package:saiyome/utils/time_provider.dart';
 import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 enum TimelineFilterPeriod {
   all,
@@ -43,10 +49,55 @@ class _TimelinePageState extends State<TimelinePage> {
   late int _selectedYear;
   late int _selectedMonth;
   String _selectedCategory = 'すべて';
+  String? _languageOverride; // 'ja' or 'en'
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+      if (_selectedCategory == 'すべて' || _selectedCategory == 'All') {
+        _selectedCategory = _allCategoryLabel;
+      }
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  String get _allCategoryLabel => _t('すべて', 'All');
+
+  String _formatMoney(int amount) {
+    if (_currentLang() == 'ja') {
+      return '¥${widget.formatYen(amount)}';
+    }
+
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(amount / 100);
+  }
+
+  String _formatYear(int year) {
+    return _currentLang() == 'ja' ? '$year年' : '$year';
+  }
+
+  String _formatMonth(int month) {
+    return _currentLang() == 'ja' ? '$month月' : DateFormat.MMMM('en_US').format(DateTime(2000, month));
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadLanguagePreference();
     _expenses = List<Expense>.from(widget.expenses);
     // final now = DateTime.now();
     final now = getNow();
@@ -113,6 +164,94 @@ class _TimelinePageState extends State<TimelinePage> {
     }
   }
 
+  Future<void> _updateHomeWidgetAfterExpenseChange() async {
+    final budgetSetting = await IsarService.getBudgetSetting();
+    final totalBudget = budgetSetting?.totalBudget ?? 0;
+    final savedExpenses = await IsarService.getExpenses();
+    final totalExpense = savedExpenses.fold<int>(
+      0,
+      (sum, item) => sum + item.amount,
+    );
+    final remaining = totalBudget - totalExpense;
+
+    final dangerCategories = <WidgetDangerCategory>[];
+
+    if ((budgetSetting?.useCategoryBudget ?? false) &&
+        (budgetSetting?.categories.isNotEmpty ?? false)) {
+      final categoryBudgets = budgetSetting!.categories
+          .where((category) => category.budget > 0)
+          .map((category) {
+            final used = savedExpenses
+                .where((item) => item.category == category.name)
+                .fold<int>(0, (sum, item) => sum + item.amount);
+            final remainingBudget = category.budget - used;
+            final usageRate = category.budget <= 0 ? 0.0 : used / category.budget;
+
+            return {
+              'name': category.name,
+              'badge': category.badge,
+              'remaining': remainingBudget,
+              'usageRate': usageRate,
+              'budget': category.budget,
+            };
+          })
+          .toList()
+        ..sort((a, b) {
+          final aRemaining = a['remaining'] as int;
+          final bRemaining = b['remaining'] as int;
+          final aUsageRate = a['usageRate'] as double;
+          final bUsageRate = b['usageRate'] as double;
+
+          final byRemaining = aRemaining.compareTo(bRemaining);
+          if (byRemaining != 0) return byRemaining;
+
+          return bUsageRate.compareTo(aUsageRate);
+        });
+
+      final widgetDangerCategories = categoryBudgets
+          .where((item) {
+            final remaining = item['remaining'] as int;
+            final usageRate = item['usageRate'] as double;
+            return remaining < 0 || usageRate >= 0.75;
+          })
+          .toList();
+
+      final widgetCategories = <Map<String, dynamic>>[
+        ...widgetDangerCategories.take(2),
+      ];
+
+      if (widgetCategories.length < 2) {
+        final randomNormalCategories = categoryBudgets
+            .where((item) => !widgetCategories.any(
+                  (selected) => selected['name'] == item['name'],
+                ))
+            .toList()
+          ..shuffle(Random());
+
+        widgetCategories.addAll(
+          randomNormalCategories.take(2 - widgetCategories.length),
+        );
+      }
+
+      dangerCategories.addAll(
+        widgetCategories.map(
+          (item) => WidgetDangerCategory(
+            name: item['name'] as String,
+            remaining: item['remaining'] as int,
+            badge: item['badge'] as String,
+            budget: item['budget'] as int,
+          ),
+        ),
+      );
+    }
+
+    await WidgetSyncService.updateRemainingBudget(
+      remaining,
+      totalBudget: totalBudget,
+      dangerCategories: dangerCategories,
+    );
+  }
+
   List<String> get _availableCategories {
     final categories = _expenses
         .map((expense) => widget.categoryLabel(expense.category))
@@ -120,7 +259,7 @@ class _TimelinePageState extends State<TimelinePage> {
         .toList()
       ..sort();
 
-    return ['すべて', ...categories];
+    return [_allCategoryLabel, ...categories];
   }
 
   bool _matchesPeriod(Expense expense) {
@@ -144,20 +283,20 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   bool _matchesCategory(Expense expense) {
-    if (_selectedCategory == 'すべて') return true;
+    if (_selectedCategory == _allCategoryLabel || _selectedCategory == 'すべて' || _selectedCategory == 'All') return true;
     return widget.categoryLabel(expense.category) == _selectedCategory;
   }
 
   String _periodLabel(TimelineFilterPeriod period) {
     switch (period) {
       case TimelineFilterPeriod.all:
-        return 'すべて';
+        return _t('すべて', 'All');
       case TimelineFilterPeriod.today:
-        return '今日';
+        return _t('今日', 'Today');
       case TimelineFilterPeriod.last7Days:
-        return '7日間';
+        return _t('7日間', '7 days');
       case TimelineFilterPeriod.customMonth:
-        return '年月指定';
+        return _t('年月指定', 'Month');
     }
   }
 
@@ -183,14 +322,14 @@ class _TimelinePageState extends State<TimelinePage> {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'キャンセル',
-                        style: TextStyle(fontSize: 16),
+                      child: Text(
+                        _t('キャンセル', 'Cancel'),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Text(
-                      '年を選択',
-                      style: TextStyle(
+                    Text(
+                      _t('年を選択', 'Select year'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -203,9 +342,9 @@ class _TimelinePageState extends State<TimelinePage> {
                         });
                         Navigator.pop(context);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -225,7 +364,7 @@ class _TimelinePageState extends State<TimelinePage> {
                   children: years.map((year) {
                     return Center(
                       child: Text(
-                        '$year年',
+                        _formatYear(year),
                         style: const TextStyle(fontSize: 22),
                       ),
                     );
@@ -261,14 +400,14 @@ class _TimelinePageState extends State<TimelinePage> {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'キャンセル',
-                        style: TextStyle(fontSize: 16),
+                      child: Text(
+                        _t('キャンセル', 'Cancel'),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Text(
-                      '月を選択',
-                      style: TextStyle(
+                    Text(
+                      _t('月を選択', 'Select month'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -280,9 +419,9 @@ class _TimelinePageState extends State<TimelinePage> {
                         });
                         Navigator.pop(context);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -302,7 +441,7 @@ class _TimelinePageState extends State<TimelinePage> {
                   children: months.map((month) {
                     return Center(
                       child: Text(
-                        '$month月',
+                        _formatMonth(month),
                         style: const TextStyle(fontSize: 22),
                       ),
                     );
@@ -338,14 +477,14 @@ class _TimelinePageState extends State<TimelinePage> {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'キャンセル',
-                        style: TextStyle(fontSize: 16),
+                      child: Text(
+                        _t('キャンセル', 'Cancel'),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const Text(
-                      'カテゴリを選択',
-                      style: TextStyle(
+                    Text(
+                      _t('カテゴリを選択', 'Select category'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -357,9 +496,9 @@ class _TimelinePageState extends State<TimelinePage> {
                         });
                         Navigator.pop(context);
                       },
-                      child: const Text(
-                        '決定',
-                        style: TextStyle(fontSize: 16, color: Colors.blue),
+                      child: Text(
+                        _t('決定', 'Done'),
+                        style: const TextStyle(fontSize: 16, color: Colors.blue),
                       ),
                     ),
                   ],
@@ -405,7 +544,7 @@ class _TimelinePageState extends State<TimelinePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('タイムライン'),
+        title: Text(_t('タイムライン', 'Timeline')),
       ),
       body: Column(
         children: [
@@ -455,7 +594,7 @@ class _TimelinePageState extends State<TimelinePage> {
                         borderRadius: BorderRadius.circular(14),
                         child: InputDecorator(
                           decoration: InputDecoration(
-                            labelText: 'カテゴリ',
+                            labelText: _t('カテゴリ', 'Category'),
                             isDense: true,
                             filled: true,
                             fillColor: const Color(0xFFF8F9FC),
@@ -468,7 +607,12 @@ class _TimelinePageState extends State<TimelinePage> {
                               vertical: 12,
                             ),
                           ),
-                          child: Text(_selectedCategory),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(_selectedCategory)),
+                              const Icon(Icons.expand_more, size: 20, color: Colors.black45),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -484,7 +628,7 @@ class _TimelinePageState extends State<TimelinePage> {
                           borderRadius: BorderRadius.circular(14),
                           child: InputDecorator(
                             decoration: InputDecoration(
-                              labelText: '年',
+                              labelText: _t('年', 'Year'),
                               isDense: true,
                               filled: true,
                               fillColor: const Color(0xFFF8F9FC),
@@ -497,7 +641,12 @@ class _TimelinePageState extends State<TimelinePage> {
                                 vertical: 12,
                               ),
                             ),
-                            child: Text('$_selectedYear年'),
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(_formatYear(_selectedYear))),
+                                const Icon(Icons.expand_more, size: 20, color: Colors.black45),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -508,7 +657,7 @@ class _TimelinePageState extends State<TimelinePage> {
                           borderRadius: BorderRadius.circular(14),
                           child: InputDecorator(
                             decoration: InputDecoration(
-                              labelText: '月',
+                              labelText: _t('月', 'Month'),
                               isDense: true,
                               filled: true,
                               fillColor: const Color(0xFFF8F9FC),
@@ -521,7 +670,12 @@ class _TimelinePageState extends State<TimelinePage> {
                                 vertical: 12,
                               ),
                             ),
-                            child: Text('$_selectedMonth月'),
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(_formatMonth(_selectedMonth))),
+                                const Icon(Icons.expand_more, size: 20, color: Colors.black45),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -537,7 +691,7 @@ class _TimelinePageState extends State<TimelinePage> {
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        'この条件に合う支出はありません。',
+                        _t('この条件に合う支出はありません。', 'No expenses match these filters.'),
                         style: theme.textTheme.bodyLarge?.copyWith(
                           color: Colors.black54,
                           fontWeight: FontWeight.w500,
@@ -582,6 +736,7 @@ children: _filteredExpenses.expand((expense) => [
               setState(() {
                 _expenses.removeWhere((item) => item.id == expense.id);
               });
+              await _updateHomeWidgetAfterExpenseChange();
               return true;
             }
             return false;
@@ -589,7 +744,7 @@ children: _filteredExpenses.expand((expense) => [
     child: TimelineItem(
       title: expense.storeName,
       subtitle: widget.categoryLabel(expense.category),
-      amount: '¥${widget.formatYen(expense.amount)}',
+      amount: _formatMoney(expense.amount),
       icon: widget.iconForCategory(expense.category),
       date: widget.formatTimelineDate(expense.createdAt),
       onEdit: widget.onEditExpense != null
@@ -605,6 +760,7 @@ children: _filteredExpenses.expand((expense) => [
                   _expenses[index] = updatedExpense;
                 }
               });
+              await _updateHomeWidgetAfterExpenseChange();
             }
           : null,
       onDelete: widget.onDeleteExpense != null
@@ -616,6 +772,7 @@ children: _filteredExpenses.expand((expense) => [
               setState(() {
                 _expenses.removeWhere((item) => item.id == expense.id);
               });
+              await _updateHomeWidgetAfterExpenseChange();
             }
           : null,
     ),

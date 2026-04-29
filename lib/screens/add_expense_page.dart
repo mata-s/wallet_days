@@ -1,15 +1,66 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:saiyome/models/expense.dart';
 import 'package:saiyome/models/isar_service.dart';
 import 'package:intl/intl.dart';
 import 'package:saiyome/services/expense_sync_service.dart';
+import 'package:saiyome/widget_sync_service.dart';
 import 'package:saiyome/services/roast_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:saiyome/main.dart' show flutterLocalNotificationsPlugin;
 import 'package:saiyome/utils/time_provider.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:saiyome/screens/receipt_scan_page.dart';
+
+class ThousandsFormatter extends TextInputFormatter {
+  final _formatter = NumberFormat('#,###');
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digitsOnly = newValue.text.replaceAll(',', '');
+
+    if (digitsOnly.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    final number = int.tryParse(digitsOnly);
+    if (number == null) return newValue;
+
+    final newText = _formatter.format(number);
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newText.length),
+    );
+  }
+}
+
+class DecimalMoneyFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+
+    if (text.isEmpty) {
+      return newValue;
+    }
+
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    if (!valid) {
+      return oldValue;
+    }
+
+    return newValue;
+  }
+}
 
 class AddExpensePage extends StatefulWidget {
   final Expense? initialExpense;
@@ -34,37 +85,100 @@ class _AddExpensePageState extends State<AddExpensePage> {
   List<String> _frequentStores = [];
   
   Map<String, List<int>> _storeAmounts = {};
+  String? _languageOverride; // 'ja' or 'en'
+
+  Future<void> _loadLanguagePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _languageOverride = prefs.getString('app_language');
+    });
+  }
+
+  String _currentLang() {
+    if (_languageOverride != null) return _languageOverride!;
+    final device = Localizations.localeOf(context).languageCode;
+    return device == 'ja' ? 'ja' : 'en';
+  }
+
+  String _t(String ja, String en) {
+    return _currentLang() == 'ja' ? ja : en;
+  }
+
+  int _parseMoneyInput(String text) {
+    final normalized = text.replaceAll(',', '').trim();
+    if (normalized.isEmpty) return 0;
+
+    if (_currentLang() == 'ja') {
+      return int.tryParse(normalized) ?? 0;
+    }
+
+    final value = double.tryParse(normalized);
+    if (value == null) return 0;
+    return (value * 100).round();
+  }
+
+  String _formatMoneyInput(int amount) {
+    if (amount <= 0) return '';
+
+    if (_currentLang() == 'ja') {
+      return _yenFormatter.format(amount);
+    }
+
+    final dollars = amount / 100;
+    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+  }
+
+  String _formatMoneyDisplay(int amount) {
+    if (_currentLang() == 'ja') {
+      return '${_yenFormatter.format(amount)}円';
+    }
+
+    final dollars = amount / 100;
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: '\$',
+      decimalDigits: 2,
+    ).format(dollars);
+  }
+
+  List<TextInputFormatter> _moneyInputFormatters() {
+    if (_currentLang() == 'ja') {
+      return [
+        FilteringTextInputFormatter.digitsOnly,
+        ThousandsFormatter(),
+      ];
+    }
+
+    return [DecimalMoneyFormatter()];
+  }
+
+bool _didApplyInitialExpense = false;
 
   @override
   void initState() {
     super.initState();
-
-    _amountController.addListener(() {
-      final text = _amountController.text.replaceAll(',', '');
-      if (text.isEmpty) return;
-
-      final value = int.tryParse(text);
-      if (value == null) return;
-
-      final formatted = _yenFormatter.format(value);
-
-      if (formatted != _amountController.text) {
-        _amountController.value = TextEditingValue(
-          text: formatted,
-          selection: TextSelection.collapsed(offset: formatted.length),
-        );
-      }
-    });
-    final initialExpense = widget.initialExpense;
-    if (initialExpense != null) {
-      _amountController.text = initialExpense.amount.toString();
-      _storeController.text = initialExpense.storeName;
-      _selectedCategory = initialExpense.category;
-    }
+    debugPrint('🔥 AddExpensePage opened');
+    _loadLanguagePreference();
 
     _loadCategories();
     _loadFrequentStores();
   }
+
+  @override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+
+  if (_didApplyInitialExpense) return;
+  _didApplyInitialExpense = true;
+
+  final initialExpense = widget.initialExpense;
+  if (initialExpense == null) return;
+
+  _amountController.text = _formatMoneyInput(initialExpense.amount);
+  _storeController.text = initialExpense.storeName;
+  _selectedCategory = initialExpense.category;
+}
 
   Future<void> _loadCategories() async {
     final budgetSetting = await IsarService.getBudgetSetting();
@@ -75,11 +189,11 @@ class _AddExpensePageState extends State<AddExpensePage> {
     setState(() {
       _categories = categories;
 
-      if (!_categories.any((c) => c.name == 'その他')) {
+      if (!_categories.any((c) => c.name == _t('その他', 'Other'))) {
         _categories = [
           ..._categories,
           BudgetCategory()
-            ..name = 'その他'
+            ..name = _t('その他', 'Other')
             ..badge = '✨'
             ..budget = 0,
         ];
@@ -167,7 +281,10 @@ Future<void> _loadFrequentStores() async {
         .where((item) => item.category == expense.category)
         .fold<int>(0, (sum, item) => sum + item.amount);
 
+    final lang = _currentLang();
+
     final roastResult = await RoastService.build(
+      languageCode: lang,
       totalBudget: totalBudget,
       usedAmount: usedAmount,
       expenses: expenses,
@@ -182,8 +299,8 @@ Future<void> _loadFrequentStores() async {
 
     const androidDetails = AndroidNotificationDetails(
       'saiyome_channel',
-      '財布の通知',
-      channelDescription: '支出記録後の通知',
+      'Wallet notifications',
+      channelDescription: 'Notifications after recording expenses',
       importance: Importance.max,
       priority: Priority.high,
     );
@@ -280,23 +397,23 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
 
     if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('カテゴリを設定してください')),
+        SnackBar(content: Text(_t('カテゴリを設定してください', 'Select a category.'))),
       );
       return;
     }
 
     if (amountText.isEmpty || store.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('金額と店名を入力してください')),
+        SnackBar(content: Text(_t('金額と店名を入力してください', 'Enter an amount and store name.'))),
       );
       return;
     }
 
-    final amount = int.tryParse(amountText.replaceAll(',', ''));
+    final amount = _parseMoneyInput(amountText);
 
-    if (amount == null) {
+    if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('金額は数字で入力してください')),
+        SnackBar(content: Text(_t('金額は数字で入力してください', 'Enter a valid amount.'))),
       );
       return;
     }
@@ -306,7 +423,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
       ..storeName = store
       ..category = _selectedCategory!
       ..createdAt = getNow()
-      ..roastMessage = '昨日の$store、見ましたよ。';
+      ..roastMessage = _t('昨日の$store、見ましたよ。', 'I saw yesterday\'s $store expense.');
 
     if (widget.initialExpense != null) {
       expense.id = widget.initialExpense!.id;
@@ -315,6 +432,93 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
       expense.roastMessage = widget.initialExpense!.roastMessage;
     }
     await IsarService.saveExpense(expense);
+    final budgetSetting = await IsarService.getBudgetSetting();
+    final totalBudget = budgetSetting?.totalBudget ?? 0;
+    final savedExpenses = await IsarService.getExpenses();
+    final totalExpense = savedExpenses.fold<int>(
+      0,
+      (sum, item) => sum + item.amount,
+    );
+    final remaining = totalBudget - totalExpense;
+
+    final dangerCategories = <WidgetDangerCategory>[];
+
+    if ((budgetSetting?.useCategoryBudget ?? false) &&
+        (budgetSetting?.categories.isNotEmpty ?? false)) {
+      final categoryCandidates = budgetSetting!.categories
+          .where((category) => category.budget > 0)
+          .map((category) {
+            final used = savedExpenses
+                .where((item) => item.category == category.name)
+                .fold<int>(0, (sum, item) => sum + item.amount);
+            final remainingBudget = category.budget - used;
+            final usageRate = category.budget <= 0
+                ? 0.0
+                : used / category.budget;
+
+            return {
+              'name': category.name,
+              'badge': category.badge,
+              'remaining': remainingBudget,
+              'usageRate': usageRate,
+              'budget': category.budget,
+            };
+          })
+          .toList();
+
+      final widgetDangerCategories = categoryCandidates
+          .where((category) {
+            final remaining = category['remaining'] as int;
+            final usageRate = category['usageRate'] as double;
+            return remaining < 0 || usageRate >= 0.75;
+          })
+          .toList()
+        ..sort((a, b) {
+          final aRemaining = a['remaining'] as int;
+          final bRemaining = b['remaining'] as int;
+          final aUsageRate = a['usageRate'] as double;
+          final bUsageRate = b['usageRate'] as double;
+
+          final byRemaining = aRemaining.compareTo(bRemaining);
+          if (byRemaining != 0) return byRemaining;
+
+          return bUsageRate.compareTo(aUsageRate);
+        });
+
+      final widgetCategories = <Map<String, dynamic>>[
+        ...widgetDangerCategories.take(2),
+      ];
+
+      if (widgetCategories.length < 2) {
+        final randomNormalCategories = categoryCandidates
+            .where((category) => !widgetCategories.any(
+                  (selected) => selected['name'] == category['name'],
+                ))
+            .toList()
+          ..shuffle(Random());
+
+        widgetCategories.addAll(
+          randomNormalCategories.take(2 - widgetCategories.length),
+        );
+      }
+
+      dangerCategories.addAll(
+        widgetCategories.map(
+          (item) => WidgetDangerCategory(
+            name: item['name'] as String,
+            remaining: item['remaining'] as int,
+            badge: item['badge'] as String,
+            budget: item['budget'] as int,
+          ),
+        ),
+      );
+    }
+
+    await WidgetSyncService.updateRemainingBudget(
+      remaining,
+      totalBudget: totalBudget,
+      dangerCategories: dangerCategories,
+    );
 
     final isPremium = await _isPremiumUser();
     if (isPremium) {
@@ -340,7 +544,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.initialExpense == null ? '支出を追加' : '支出を編集'),
+        title: Text(widget.initialExpense == null ? _t('支出を追加', 'Add expense') : _t('支出を編集', 'Edit expense')),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -361,20 +565,20 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
               //   label: const Text('レシートを読み込む（プレミアム）'),
               // ),
               // const SizedBox(height: 12),
-              Text('店名・サービス名', style: theme.textTheme.titleMedium),
+              Text(_t('店名・サービス名', 'Store or service'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               TextField(
                 controller: _storeController,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: '例: スタバ',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: _t('例: カフェ', 'Example: Cafe'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
               if (_frequentStores.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Text(
-                  'よく使うお店',
+                  _t('よく使うお店', 'Frequent stores'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: Colors.black54,
                     fontWeight: FontWeight.w600,
@@ -398,23 +602,25 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                     );
                   }).toList(),
                 ),
+              ],
                 const SizedBox(height: 20),
-                 Text('金額', style: theme.textTheme.titleMedium),
+                 Text(_t('金額', 'Amount'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               TextField(
                 controller: _amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  hintText: '例: 700',
-                  border: OutlineInputBorder(),
-                  suffixText: '円',
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: _moneyInputFormatters(),
+                decoration: InputDecoration(
+                  hintText: _t('例: 700', 'Example: 7.00'),
+                  border: const OutlineInputBorder(),
+                  suffixText: _t('円', '\$'),
                 ),
               ),
               if (_storeController.text.trim().isNotEmpty &&
     (_storeAmounts[_storeController.text.trim()] ?? []).isNotEmpty) ...[
   const SizedBox(height: 10),
   Text(
-    'よく使う金額',
+    _t('よく使う金額', 'Frequent amounts'),
     style: theme.textTheme.bodySmall?.copyWith(
       color: Colors.black54,
       fontWeight: FontWeight.w600,
@@ -427,10 +633,10 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
     children: (_storeAmounts[_storeController.text.trim()] ?? [])
         .map((amount) {
       return ActionChip(
-        label: Text('${_yenFormatter.format(amount)}円'),
+        label: Text(_formatMoneyDisplay(amount)),
         onPressed: () {
           setState(() {
-            _amountController.text = amount.toString();
+            _amountController.text = _formatMoneyInput(amount);
             _amountController.selection = TextSelection.collapsed(
               offset: _amountController.text.length,
             );
@@ -440,9 +646,8 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
     }).toList(),
   ),
 ],
-              ],
               const SizedBox(height: 20),
-              Text('カテゴリ', style: theme.textTheme.titleMedium),
+              Text(_t('カテゴリ', 'Category'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               if (_categories.isEmpty)
                 Container(
@@ -453,9 +658,9 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE0E0E0)),
                   ),
-                  child: const Text(
-                    '先に予算設定でカテゴリを登録してください',
-                    style: TextStyle(color: Colors.black54),
+                  child: Text(
+                    _t('先に予算設定でカテゴリを登録してください', 'Create categories in Budget settings first.'),
+                    style: const TextStyle(color: Colors.black54),
                   ),
                 )
               else
@@ -478,11 +683,11 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                     }).toList(),
                   ],
                 ),
-              if (_selectedCategory == 'その他')
+              if (_selectedCategory == _t('その他', 'Other'))
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '※ その他は、カテゴリーにない急な出費のときに使います',
+                    _t('※ その他は、カテゴリーにない急な出費のときに使います', 'Use Other for unexpected expenses that do not fit a category.'),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.black54,
@@ -495,7 +700,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _saveExpense,
-                  child: const Text('保存'),
+                  child: Text(_t('保存', 'Save')),
                 ),
               ),
             ],
@@ -516,9 +721,9 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                   children: [
                     GestureDetector(
                       onTap: () => FocusScope.of(context).unfocus(),
-                      child: const Text(
-                        '完了',
-                        style: TextStyle(
+                      child: Text(
+                        _t('完了', 'Done'),
+                        style: const TextStyle(
                           fontSize: 16,
                           color: Colors.blue,
                           fontWeight: FontWeight.bold,

@@ -79,12 +79,16 @@ Deno.serve(async (req) => {
       },
     });
 
+
     const body = await req.json();
     const localId = Number(body.budget_history_local_id);
     const useAi = Boolean(body.use_ai ?? true);
+    const lang = normalizeLang(body.lang);
+
     console.log("[generate-monthly-report] request", {
       localId,
       useAi,
+      lang,
     });
 
     const {
@@ -225,11 +229,12 @@ Deno.serve(async (req) => {
     const remainingAmount = totalBudget - totalSpent;
     const achieved = safeHistory.is_achieved;
 
-    const rank = calculateRank(safeAllHistories);
+    const rank = calculateRank(safeAllHistories, lang);
 
     const categoryMap = new Map<string, number>();
     for (const expense of safeExpenses) {
-      const key = (expense.category ?? "未分類").trim() || "未分類";
+      const fallbackCategory = lang === "en" ? "Uncategorized" : "未分類";
+      const key = (expense.category ?? fallbackCategory).trim() || fallbackCategory;
       categoryMap.set(key, (categoryMap.get(key) ?? 0) + (expense.amount ?? 0));
     }
 
@@ -242,8 +247,12 @@ Deno.serve(async (req) => {
       .sort((a, b) => b.amount - a.amount);
 
     const prevText = safeHistory
-      ? `達成状況: ${safeHistory.is_achieved ? "予算内" : "予算オーバー"} / 連続達成: ${safeHistory.streak}回`
-      : "履歴情報なし";
+      ? lang === "en"
+        ? `Status: ${safeHistory.is_achieved ? "within budget" : "over budget"} / current streak: ${safeHistory.streak}`
+        : `達成状況: ${safeHistory.is_achieved ? "予算内" : "予算オーバー"} / 連続達成: ${safeHistory.streak}回`
+      : lang === "en"
+        ? "No history data"
+        : "履歴情報なし";
 
     const summaryText = buildSummary({
       totalBudget,
@@ -251,9 +260,11 @@ Deno.serve(async (req) => {
       remainingAmount,
       achieved,
       topCategories: categoryJson.slice(0, 3),
+      lang,
     });
 
     let adviceText = buildAdvice({
+      lang,
       achieved,
       totalBudget,
       totalSpent,
@@ -262,6 +273,7 @@ Deno.serve(async (req) => {
     });
 
     let badges: BadgeResult[] = buildFallbackBadges({
+      lang,
       achieved,
       totalBudget,
       totalSpent,
@@ -275,6 +287,7 @@ Deno.serve(async (req) => {
       try {
         const aiText = await generateAiAdvice({
           apiKey: openAiApiKey,
+          lang,
           periodStart,
           periodEnd,
           totalBudget,
@@ -291,6 +304,7 @@ Deno.serve(async (req) => {
 
         const aiBadges = await generateAiBadges({
           apiKey: openAiApiKey,
+          lang,
           periodStart,
           periodEnd,
           totalBudget,
@@ -307,6 +321,7 @@ Deno.serve(async (req) => {
 
         aiTitle = await generateAiTitle({
           apiKey: openAiApiKey,
+          lang,
           totalBudget,
           totalSpent,
           remainingAmount,
@@ -444,34 +459,60 @@ Deno.serve(async (req) => {
 });
 
 function buildSummary(args: {
+  lang: "ja" | "en";
   totalBudget: number;
   totalSpent: number;
   remainingAmount: number;
   achieved: boolean;
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
 }) {
-  const { totalBudget, totalSpent, remainingAmount, achieved, topCategories } =
-    args;
+  const { lang, totalBudget, totalSpent, remainingAmount, achieved, topCategories } = args;
 
   const top = topCategories[0];
   const topText = top
-    ? `最も支出が多かったのは「${top.name}」で${formatYen(top.amount)}です。`
-    : "カテゴリ別の大きな偏りは見つかりませんでした。";
+    ? lang === "en"
+      ? `Your biggest spending area was "${top.name}" at ${formatMoney(top.amount, lang)}.`
+      : `最も支出が多かったのは「${top.name}」で${formatMoney(top.amount, lang)}です。`
+    : lang === "en"
+      ? "There was no major category imbalance this month."
+      : "カテゴリ別の大きな偏りは見つかりませんでした。";
+
+  if (lang === "en") {
+    return achieved
+      ? `You stayed within budget this month. Against a budget of ${formatMoney(totalBudget, lang)}, you spent ${formatMoney(totalSpent, lang)} and had ${formatMoney(remainingAmount, lang)} left. ${topText}`
+      : `You went over budget this month. Against a budget of ${formatMoney(totalBudget, lang)}, you spent ${formatMoney(totalSpent, lang)}, which is ${formatMoney(Math.abs(remainingAmount), lang)} over. ${topText}`;
+  }
 
   return achieved
-    ? `今月は予算内でした。予算${formatYen(totalBudget)}に対して、支出は${formatYen(totalSpent)}、残りは${formatYen(remainingAmount)}です。${topText}`
-    : `今月は予算を超えました。予算${formatYen(totalBudget)}に対して、支出は${formatYen(totalSpent)}で、${formatYen(Math.abs(remainingAmount))}オーバーです。${topText}`;
+    ? `今月は予算内でした。予算${formatMoney(totalBudget, lang)}に対して、支出は${formatMoney(totalSpent, lang)}、残りは${formatMoney(remainingAmount, lang)}です。${topText}`
+    : `今月は予算を超えました。予算${formatMoney(totalBudget, lang)}に対して、支出は${formatMoney(totalSpent, lang)}で、${formatMoney(Math.abs(remainingAmount), lang)}オーバーです。${topText}`;
 }
 
 function buildAdvice(args: {
+  lang: "ja" | "en";
   achieved: boolean;
   totalBudget: number;
   totalSpent: number;
   remainingAmount: number;
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
 }) {
-  const { achieved, topCategories, remainingAmount } = args;
+  const { lang, achieved, topCategories, remainingAmount } = args;
   const top = topCategories[0];
+
+  if (lang === "en") {
+    if (achieved) {
+      if (top) {
+        return `You stayed within budget. "${top.name}" took a larger share, so keeping that steady while trimming small waste in other areas could make things even more stable.`;
+      }
+      return "You stayed within budget. Keeping this pace should make your budgeting feel more stable over time.";
+    }
+
+    if (top) {
+      return `"${top.name}" stands out as the main reason you went over budget. A small review of this category next time could make it easier to improve by ${formatMoney(Math.abs(remainingAmount), lang)}.`;
+    }
+
+    return "You went over budget this time. Looking back at the days with larger expenses should make the next period easier to adjust.";
+  }
 
   if (achieved) {
     if (top) {
@@ -481,7 +522,7 @@ function buildAdvice(args: {
   }
 
   if (top) {
-    return `予算オーバーの主因として「${top.name}」が目立っています。次回はこのカテゴリの使い方を少しだけ見直すと、${formatYen(Math.abs(remainingAmount))}の改善につながりやすいです。`;
+    return `予算オーバーの主因として「${top.name}」が目立っています。次回はこのカテゴリの使い方を少しだけ見直すと、${formatMoney(Math.abs(remainingAmount), lang)}の改善につながりやすいです。`;
   }
 
   return "予算オーバーでした。高額な支出が出た日を振り返ると、次の期間で調整しやすくなります。";
@@ -489,6 +530,7 @@ function buildAdvice(args: {
 
 
 function buildFallbackBadges(args: {
+  lang: "ja" | "en";
   achieved: boolean;
   totalBudget: number;
   totalSpent: number;
@@ -496,6 +538,7 @@ function buildFallbackBadges(args: {
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
   history: BudgetHistoryRow | null;
 }): BadgeResult[] {
+  const lang = args.lang;
   const badges: BadgeResult[] = [];
   const spentRatio = args.totalBudget > 0 ? args.totalSpent / args.totalBudget : 0;
   const top = args.topCategories[0];
@@ -503,9 +546,11 @@ function buildFallbackBadges(args: {
   if (args.achieved) {
     badges.push({
       badge_key: "budget_guardian",
-      title: "予算ガーディアン",
-      description: "今月を予算内で守り切りました。",
-      reason: `予算${formatYen(args.totalBudget)}に対して支出${formatYen(args.totalSpent)}で着地しました。`,
+      title: lang === "en" ? "Budget Guardian" : "予算ガーディアン",
+      description: lang === "en" ? "You protected this month within budget." : "今月を予算内で守り切りました。",
+      reason: lang === "en"
+        ? `You landed at ${formatMoney(args.totalSpent, lang)} against a budget of ${formatMoney(args.totalBudget, lang)}.`
+        : `予算${formatMoney(args.totalBudget, lang)}に対して支出${formatMoney(args.totalSpent, lang)}で着地しました。`,
       rarity: spentRatio <= 0.8 ? "rare" : "common",
     });
   }
@@ -513,9 +558,11 @@ function buildFallbackBadges(args: {
   if (args.remainingAmount >= 3000) {
     badges.push({
       badge_key: "margin_master",
-      title: "余白マスター",
-      description: "しっかり余裕を残して終えました。",
-      reason: `${formatYen(args.remainingAmount)}を残して期間を終えました。`,
+      title: lang === "en" ? "Margin Master" : "余白マスター",
+      description: lang === "en" ? "You finished with solid room left." : "しっかり余裕を残して終えました。",
+      reason: lang === "en"
+        ? `You finished the period with ${formatMoney(args.remainingAmount, lang)} left.`
+        : `${formatMoney(args.remainingAmount, lang)}を残して期間を終えました。`,
       rarity: args.remainingAmount >= 10000 ? "epic" : "rare",
     });
   }
@@ -523,9 +570,11 @@ function buildFallbackBadges(args: {
   if (top && top.ratio >= 45) {
     badges.push({
       badge_key: "category_spotlight",
-      title: `${top.name}フォーカス`,
-      description: `今月は「${top.name}」が家計の主役でした。`,
-      reason: `${top.name}が全体の${top.ratio}%を占めました。`,
+      title: lang === "en" ? `${top.name} Spotlight` : `${top.name}フォーカス`,
+      description: lang === "en" ? `"${top.name}" was the main character of your budget this month.` : `今月は「${top.name}」が家計の主役でした。`,
+      reason: lang === "en"
+        ? `${top.name} made up ${top.ratio}% of your spending.`
+        : `${top.name}が全体の${top.ratio}%を占めました。`,
       rarity: top.ratio >= 60 ? "epic" : "common",
     });
   }
@@ -533,9 +582,11 @@ function buildFallbackBadges(args: {
   if (args.history && args.history.streak >= 3) {
     badges.push({
       badge_key: "steady_runner",
-      title: "堅実ランナー",
-      description: "連続達成の流れをしっかり継続中です。",
-      reason: `連続達成が${args.history.streak}回まで伸びています。`,
+      title: lang === "en" ? "Steady Runner" : "堅実ランナー",
+      description: lang === "en" ? "You are keeping your success streak going." : "連続達成の流れをしっかり継続中です。",
+      reason: lang === "en"
+        ? `Your current streak has reached ${args.history.streak}.`
+        : `連続達成が${args.history.streak}回まで伸びています。`,
       rarity: args.history.streak >= 6 ? "epic" : "rare",
     });
   }
@@ -545,28 +596,67 @@ function buildFallbackBadges(args: {
 
 async function generateAiTitle(args: {
   apiKey: string;
+  lang: "ja" | "en";
   totalBudget: number;
   totalSpent: number;
   remainingAmount: number;
   achieved: boolean;
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
 }): Promise<TitleResult | null> {
-  const prompt = `
-あなたは家計アプリの称号生成AIです。
+  const prompt = args.lang === "en"
+    ? `
+You are a title generator for a budgeting app with a gentle characterful tone.
+
+Create exactly one short title that fits this user based on the data below.
+
+Goal:
+- Make the title memorable, slightly funny, and affectionate
+- It may lightly hint at the app's character, but do not overuse the word "wallet"
+- Keep it useful and based on the data, not random
+
+Rules:
+- Return JSON only
+- Include title, reason, rarity
+- title should be short and punchy, like "Close Call Champion", "Wallet Whisperer", "Still Breathing", or "Quiet Saver"
+- reason should be natural English and mention the actual spending result
+- rarity must be common / rare / epic
+- Tone: 80% useful, 20% playful
+- A little dry humor is welcome
+- Do not be too silly, childish, mean, or dramatic
+- Reflect categories or stores only when they are strongly relevant
+- Avoid negative, critical, guilt-inducing, or aggressive wording
+- Do not use medical, financial advice, or gambling-like wording
+- Use the word "wallet" at most once across title and reason combined
+
+Data:
+Budget: ${formatMoney(args.totalBudget, args.lang)}
+Spent: ${formatMoney(args.totalSpent, args.lang)}
+Remaining: ${formatMoney(args.remainingAmount, args.lang)}
+Achieved: ${args.achieved}
+Categories: ${JSON.stringify(args.topCategories)}
+`
+    : `
+あなたは少しキャラクター感のある家計アプリの称号生成AIです。
 
 以下のデータから、その人にぴったりの称号を1つだけ作ってください。
+
+目的:
+- ただの節約称号ではなく、少しクスッとできて記憶に残る称号にする
+- アプリのキャラクター感を少しだけ匂わせる。ただし「財布」という単語を多用しない
+- ただしデータに基づいた納得感は必ず残す
 
 ルール:
 - JSONのみ返す
 - title, reason, rarity を含む
-- titleは短くて印象的（例: 静かなる節約家）
-- reasonは自然な日本語で
+- titleは短くて印象的（例: ギリギリ職人、財布の守護者、まだ息してる、静かなる節約家）
+- reasonは自然な日本語で、実際の支出結果に触れる
 - rarityは common / rare / epic
 
 トーン:
-- 「かっこいい / やさしい / 少しユーモア」のどれかにする
-- クスッとできる軽い面白さを含めても良い
-- ただしふざけすぎない（あくまで愛着が湧くレベル）
+- 8割まじめ、2割クセ
+- 少しだけユーモアやキャラクター感を入れてよい
+- ふざけすぎない
+- ユーザーを責めない
 
 店舗・カテゴリの扱い:
 - カテゴリや店舗が強く偏っている場合のみ、それを称号に反映する
@@ -575,11 +665,14 @@ async function generateAiTitle(args: {
 禁止:
 - ネガティブすぎる表現
 - 批判的・攻撃的な表現
+- 不安を煽る表現
+- 医療・金融助言っぽい表現
+- titleとreasonを合わせて「財布」は最大1回まで
 
 データ:
-予算: ${args.totalBudget}
-支出: ${args.totalSpent}
-残額: ${args.remainingAmount}
+予算: ${formatMoney(args.totalBudget, args.lang)}
+支出: ${formatMoney(args.totalSpent, args.lang)}
+残額: ${formatMoney(args.remainingAmount, args.lang)}
 達成: ${args.achieved}
 カテゴリ: ${JSON.stringify(args.topCategories)}
 `;
@@ -647,6 +740,7 @@ async function generateAiTitle(args: {
 
 async function generateAiBadges(args: {
   apiKey: string;
+  lang: "ja" | "en";
   periodStart: string;
   periodEnd: string;
   totalBudget: number;
@@ -656,22 +750,82 @@ async function generateAiBadges(args: {
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
   historyText: string;
 }): Promise<BadgeResult[]> {
-  const prompt = `
-あなたは家計アプリの月次レポート用バッヂ設計アシスタントです。
+  const prompt = args.lang === "en"
+    ? `
+You are a badge design assistant for a monthly budgeting report in a budgeting app with a gentle characterful tone.
+Look at this period's budgeting data and create up to 3 fun, affectionate English badges.
+
+Goal:
+- Badges should feel like small trophies from the app's character, without repeating the word "wallet"
+- Make them memorable, slightly witty, and still clearly based on the data
+- Keep the tone kind, never mocking
+
+Rules:
+- Return a JSON array only
+- Each item must have badge_key, title, description, reason, rarity
+- badge_key must use only letters, numbers, and underscores
+- rarity must be common / rare / epic
+- title should be short and punchy
+- description should be one short sentence
+- reason should include a concrete basis from the data
+- Tone: 80% useful, 20% playful
+- A little dry humor is welcome, but keep the character flavor subtle
+- Do not exaggerate too much
+- Avoid guilt, fear, criticism, or aggressive wording
+- Across all badges, use the word "wallet" at most once total
+
+Examples of tone:
+- "Wallet Whisperer"
+- "Close Call Survivor"
+- "Still Breathing"
+- "Margin Keeper"
+- "Snack Budget Diplomat"
+
+Period: ${args.periodStart} to ${args.periodEnd}
+Budget: ${formatMoney(args.totalBudget, args.lang)}
+Spent: ${formatMoney(args.totalSpent, args.lang)}
+Remaining: ${formatMoney(args.remainingAmount, args.lang)}
+Within budget: ${args.achieved ? "yes" : "no"}
+Top categories: ${JSON.stringify(args.topCategories)}
+Context: ${args.historyText}
+`
+    : `
+あなたは少しキャラクター感のある家計アプリの月次レポート用バッヂ設計アシスタントです。
 この期間の家計データを見て、面白くて少し愛着が湧く日本語バッヂを最大3個考えてください。
+
+目的:
+- アプリのキャラクターからもらう小さなトロフィーのようなバッヂにする。ただし「財布」という単語を多用しない
+- 少しクスッとできるが、ちゃんとデータに基づいた納得感を残す
+- ユーザーを責めず、前向きにする
 
 ルール:
 - JSON配列だけを返す
 - 各要素は badge_key, title, description, reason, rarity を持つ
 - badge_key は英数字とアンダースコアのみ
 - rarity は common / rare / epic のいずれか
-- title は短く、description は一言、reason は具体的な根拠を書く
-- 大げさすぎず、前向きで、少し遊び心があること
+- title は短く印象的
+- description は一言
+- reason は具体的な根拠を書く
+- 8割まじめ、2割クセ
+- 大げさすぎず、少しキャラクター感のあるユーモアにする
+
+例の方向性:
+- 財布の守護者
+- ギリギリ生還
+- 余白の民
+- まだ息してる
+- コンビニ外交官
+
+禁止:
+- ネガティブすぎる表現
+- 批判的・攻撃的な表現
+- 不安を煽る表現
+- すべてのバッヂ全体で「財布」は最大1回まで
 
 期間: ${args.periodStart} 〜 ${args.periodEnd}
-予算: ${args.totalBudget}
-支出: ${args.totalSpent}
-残額: ${args.remainingAmount}
+予算: ${formatMoney(args.totalBudget, args.lang)}
+支出: ${formatMoney(args.totalSpent, args.lang)}
+残額: ${formatMoney(args.remainingAmount, args.lang)}
 予算達成: ${args.achieved ? "はい" : "いいえ"}
 上位カテゴリ: ${JSON.stringify(args.topCategories)}
 補足: ${args.historyText}
@@ -740,8 +894,19 @@ function normalizeRarity(value: unknown): "common" | "rare" | "epic" {
   return "common";
 }
 
-function formatYen(value: number) {
+function formatMoney(value: number, lang: "ja" | "en") {
+  if (lang === "en") {
+    return `$${(value / 100).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
   return `${value.toLocaleString("ja-JP")}円`;
+}
+
+function formatYen(value: number) {
+  return formatMoney(value, "ja");
 }
 
 function toDateKey(value: string) {
@@ -758,7 +923,10 @@ function json(data: unknown, status = 200) {
     },
   });
 }
-function calculateRank(histories: BudgetHistoryRow[]): RankResult {
+function calculateRank(
+  histories: BudgetHistoryRow[],
+  lang: "ja" | "en" = "ja",
+): RankResult {
   const totalCount = histories.length;
   const achievedCount = histories.filter((item) => item.is_achieved).length;
   const successRate = totalCount > 0 ? achievedCount / totalCount : 0;
@@ -772,7 +940,7 @@ function calculateRank(histories: BudgetHistoryRow[]): RankResult {
 
   return {
     rank_key: rankKey,
-    rank_label: rankLabel(rankKey),
+    rank_label: rankLabel(rankKey, lang),
     total_count: totalCount,
     achieved_count: achievedCount,
     success_rate: Number(successRate.toFixed(4)),
@@ -829,7 +997,24 @@ function resolveRankKey(args: {
   return "starter";
 }
 
-function rankLabel(rankKey: string): string {
+function rankLabel(rankKey: string, lang: "ja" | "en" = "ja"): string {
+  if (lang === "en") {
+    switch (rankKey) {
+      case "diamond":
+        return "Diamond";
+      case "platinum":
+        return "Platinum";
+      case "gold":
+        return "Gold";
+      case "silver":
+        return "Silver";
+      case "bronze":
+        return "Bronze";
+      default:
+        return "Starter";
+    }
+  }
+
   switch (rankKey) {
     case "diamond":
       return "ダイヤ";
@@ -848,6 +1033,7 @@ function rankLabel(rankKey: string): string {
 
 async function generateAiAdvice(args: {
   apiKey: string;
+  lang: "ja" | "en";
   periodStart: string;
   periodEnd: string;
   totalBudget: number;
@@ -857,24 +1043,68 @@ async function generateAiAdvice(args: {
   topCategories: Array<{ name: string; amount: number; ratio: number }>;
   historyText: string;
 }): Promise<string | null> {
-  const prompt = `
-あなたは家計アプリのアドバイス生成AIです。
+  const prompt = args.lang === "en"
+    ? `
+You are a monthly reflection writer for a budgeting app with a gentle characterful tone.
 
-以下のデータから、ユーザーに対する短くてやさしいアドバイスを1つ生成してください。
+Generate one short, gentle monthly reflection based on the data below.
+
+Goal:
+- Make it useful, warm, and a little memorable
+- It can have a subtle characterful touch, but should mostly sound like a clean monthly reflection
+- Keep it 80% practical reflection and 20% playful character
+
+Rules:
+- Natural English
+- About 2 to 3 sentences
+- Do not blame the user
+- Keep it positive and slightly supportive
+- Avoid repeating the word "wallet"; use it at most once, and only if it feels natural
+- Do not overdo jokes
+- Do not imply the app can chat, counsel, or provide ongoing personal support
+- Do not say "feel free to ask", "talk to me anytime", or "I'm here to help"
+- Make it factual and based on the data
+- Avoid financial advice, medical advice, guilt, fear, or aggressive wording
+
+Period: ${args.periodStart} to ${args.periodEnd}
+Budget: ${formatMoney(args.totalBudget, args.lang)}
+Spent: ${formatMoney(args.totalSpent, args.lang)}
+Remaining: ${formatMoney(args.remainingAmount, args.lang)}
+Achieved: ${args.achieved}
+Categories: ${JSON.stringify(args.topCategories)}
+History: ${args.historyText}
+`
+    : `
+あなたは少しキャラクター感のある家計アプリの月次ふりかえり生成AIです。
+
+以下のデータから、ユーザーに対する短くてやさしい月のふりかえりを1つ生成してください。
+
+目的:
+- ただの分析ではなく、少し記憶に残る言葉にする
+- ほんの少しキャラクター感は出すが、基本は読みやすい月次レポートにする
+- 8割は実用的な振り返り、2割だけキャラクター感を入れる
 
 ルール:
 - 日本語で自然な文章
 - 2〜3文程度
 - 責めない・前向き・少し寄り添うトーン
+- 「財布」という単語は最大1回まで。無理に使わない
+- ただし冗談を入れすぎない
 - アプリや人が会話・相談対応できるような表現は禁止
 - 「いつでも相談してください」「また相談してね」「気軽に話してください」などの文は禁止
 - サポート窓口・伴走者・友達のように振る舞わない
+- 事実に基づいた振り返りコメントにする
+
+禁止:
+- ユーザーを責める表現
+- 不安を煽る表現
+- 医療・金融助言っぽい表現
+- 攻撃的な表現
 
 期間: ${args.periodStart} 〜 ${args.periodEnd}
-出力の注意: 事実に基づいた振り返りコメントにし、存在しないサポート機能を匂わせないこと
-予算: ${args.totalBudget}
-支出: ${args.totalSpent}
-残額: ${args.remainingAmount}
+予算: ${formatMoney(args.totalBudget, args.lang)}
+支出: ${formatMoney(args.totalSpent, args.lang)}
+残額: ${formatMoney(args.remainingAmount, args.lang)}
 達成: ${args.achieved}
 カテゴリ: ${JSON.stringify(args.topCategories)}
 履歴: ${args.historyText}
@@ -912,4 +1142,8 @@ async function generateAiAdvice(args: {
   }
 
   return text.trim();
+}
+
+function normalizeLang(value: unknown): "ja" | "en" {
+  return value === "en" ? "en" : "ja";
 }

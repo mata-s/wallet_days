@@ -1,10 +1,5 @@
 import 'package:saiyome/models/expense.dart';
 
-/// 支出の意味合いを、画面表示用の文生成とは分けて判定するサービス。
-///
-/// まずはローカルルールで軽く判定し、
-/// あいまいなケースだけ将来的にAIへ回す前提の設計にしている。
-
 enum ExpenseJudgeSeverity {
   normal,
   warning,
@@ -72,6 +67,23 @@ class ExpenseJudgeService {
     'tully',
     'カフェ',
     'cafe',
+    'coffee',
+    'coffee shop',
+    'coffeehouse',
+    'espresso',
+    'latte',
+    'blue bottle',
+    'peets',
+    "peet's",
+    'costa coffee',
+    'costa',
+    'coffee bean',
+    'tim hortons',
+    'dunkin',
+    'dunkin donuts',
+    'dutch bros',
+    'luckin coffee',
+    'mccafe'
   ];
 
   static const List<String> _convenienceKeywords = [
@@ -81,6 +93,14 @@ class ExpenseJudgeService {
     'ファミマ',
     'ファミリーマート',
     'ミニストップ',
+    '7-eleven',
+    'seven eleven',
+    'lawson',
+    'familymart',
+    'family mart',
+    'ministop',
+    'convenience',
+    'convenience store',
   ];
 
   static const List<String> _supermarketKeywords = [
@@ -95,6 +115,30 @@ class ExpenseJudgeService {
     'まいばすけっと',
     'イトーヨーカドー',
     'スーパー',
+    'aeon',
+    'maxvalu',
+    'seiyu',
+    'life supermarket',
+    'summit',
+    'yaoko',
+    'ok store',
+    'costco',
+    'whole foods',
+    'trader joe',
+    'walmart',
+    'target',
+    'grocery',
+    'groceries',
+    'supermarket',
+    'kroger',
+    'publix',
+    'safeway',
+    'albertsons',
+    'aldi',
+    'heb',
+    'h-e-b',
+    'instacart',
+    'amazon fresh',
   ];
 
   static const List<String> _hobbyKeywords = [
@@ -109,6 +153,28 @@ class ExpenseJudgeService {
     'ガチャ',
     'カラオケ',
     '推し',
+    'hobby',
+    'hobbies',
+    'anime',
+    'manga',
+    'comic',
+    'comics',
+    'bookoff',
+    'book off',
+    'games',
+    'gaming',
+    'steam',
+    'nintendo',
+    'playstation',
+    'xbox',
+    'concert',
+    'ticket',
+    'tickets',
+    'merch',
+    'merchandise',
+    'collectible',
+    'collectibles',
+    'gacha',
   ];
 
   static const List<String> _beautyKeywords = [
@@ -121,6 +187,15 @@ class ExpenseJudgeService {
     '美容',
     'ヘア',
     'サロン',
+    'matsukiyo',
+    'welcia',
+    'cosmetics',
+    'beauty',
+    'hair salon',
+    'salon',
+    'skincare',
+    'makeup',
+    'nail',
   ];
 
   static const List<String> _healthKeywords = [
@@ -129,6 +204,13 @@ class ExpenseJudgeService {
     '薬局',
     'ドラッグ',
     '歯医者',
+    'hospital',
+    'clinic',
+    'pharmacy',
+    'dentist',
+    'medical',
+    'health',
+    'drugstore',
   ];
 
   static const List<String> _transportKeywords = [
@@ -143,6 +225,20 @@ class ExpenseJudgeService {
     '駐車場',
     'ガソリン',
     'eneos',
+    'train',
+    'subway',
+    'metro',
+    'bus',
+    'taxi',
+    'uber',
+    'lyft',
+    'parking',
+    'gas',
+    'gasoline',
+    'fuel',
+    'shell',
+    'exxon',
+    'chevron',
   ];
 
   static const List<String> _ceremonyKeywords = [
@@ -162,18 +258,108 @@ class ExpenseJudgeService {
     'プレゼント',
     'ギフト',
     '祝',
+    'wedding',
+    'funeral',
+    'ceremony',
+    'celebration',
+    'gift',
+    'gifts',
+    'present',
+    'presents',
+    'donation',
+    'condolence',
+    'memorial',
+    'anniversary',
+    'birthday gift',
+    'bridal',
   ];
 
   static const List<String> _drinkingKeywords = [
-    '居酒屋','飲み','飲み会','バー','bar','バル','焼き鳥','串','立ち飲み','酒場'
+    '居酒屋',
+    '飲み',
+    '飲み会',
+    'バー',
+    'bar',
+    'pub',
+    'izakaya',
+    'bal',
+    'バル',
+    '焼き鳥',
+    'やきとり',
+    'yakitori',
+    '串',
+    '立ち飲み',
+    '酒場',
+    'beer',
+    'wine',
+    'cocktail',
+    'drinking',
+    'happy hour',
   ];
 
   static const List<String> _fashionKeywords = [
-    'ユニクロ','gu','しまむら','zara','h&m','wego','abcマート','nike','adidas','ファッション'
+    'ユニクロ',
+    'uniqlo',
+    'gu',
+    'しまむら',
+    'shimamura',
+    'zara',
+    'h&m',
+    'wego',
+    'abcマート',
+    'abc mart',
+    'nike',
+    'adidas',
+    'puma',
+    'new balance',
+    'converse',
+    'vans',
+    'gap',
+    'hm',
+    'shein',
+    'ファッション',
+    'fashion',
+    'clothing',
+    'clothes',
+    'apparel',
+    'shoes',
+    'sneakers',
   ];
 
   static const List<String> _dailyGoodsKeywords = [
-    'ダイソー','セリア','キャンドゥ','ニトリ','無印','ロフト','ハンズ','カインズ','コーナン','ドンキ'
+    'ダイソー',
+    'daiso',
+    'セリア',
+    'seria',
+    'キャンドゥ',
+    'cando',
+    'can do',
+    'ニトリ',
+    'nitori',
+    '無印',
+    'muji',
+    'ロフト',
+    'loft',
+    'ハンズ',
+    'hands',
+    'tokyu hands',
+    'カインズ',
+    'cainz',
+    'コーナン',
+    'kohnan',
+    'ドンキ',
+    'donki',
+    'don quijote',
+    'dollar store',
+    'home goods',
+    'household',
+    'household goods',
+    'daily goods',
+    'home center',
+    'home depot',
+    'lowes',
+    'ikea',
+    'drugstore',
   ];
 
   static const List<String> _movieKeywords = [
@@ -185,6 +371,13 @@ class ExpenseJudgeService {
     '109シネマ',
     'ユナイテッドシネマ',
     '映画',
+    'movie',
+    'movies',
+    'cinema',
+    'theater',
+    'theatre',
+    'amc',
+    'regal',
   ];
 
   static const List<String> _karaokeKeywords = [
@@ -194,6 +387,9 @@ class ExpenseJudgeService {
     'まねきねこ',
     'joysound',
     'コートダジュール',
+    'karaoke',
+    'big echo',
+    'manekineko',
   ];
 
   static const List<String> _arcadeKeywords = [
@@ -204,16 +400,87 @@ class ExpenseJudgeService {
     'gigo',
     'タイトー',
     'namco',
+    'arcade',
+    'game center',
+    'round1',
+    'round one',
+    'taito',
   ];
 
   static const List<String> _entertainmentKeywords = [
     '温泉',
+    '銭湯',
     'サウナ',
+    'スパ',
+    '岩盤浴',
     'ボウリング',
+    '遊園地',
+    'テーマパーク',
+    '水族館',
+    '動物園',
+    '美術館',
+    '博物館',
+    '温浴',
+    'onsen',
+    'hot spring',
+    'spa',
+    'sauna',
+    'bowling',
+    'theme park',
+    'amusement park',
+    'aquarium',
+    'zoo',
+    'museum',
+    'gallery',
+    'disney',
+    'disneyland',
+    'universal studios',
+    'netflix',
+    'spotify',
+    'hulu',
+    'disney+',
+    'youtube premium',
+    'prime video',
   ];
 
   static const List<String> _travelKeywords = [
-    'ホテル','旅館','airbnb','じゃらん','楽天トラベル','expedia','booking','新幹線','ana','jal'
+    'ホテル',
+    '旅館',
+    '民宿',
+    '宿泊',
+    '旅行',
+    'ツアー',
+    'airbnb',
+    'じゃらん',
+    '楽天トラベル',
+    'expedia',
+    'booking',
+    '新幹線',
+    'ana',
+    'jal',
+    'hotel',
+    'hotels',
+    'motel',
+    'inn',
+    'hostel',
+    'resort',
+    'lodging',
+    'travel',
+    'trip',
+    'tour',
+    'flight',
+    'airline',
+    'airport',
+    'delta',
+    'united airlines',
+    'american airlines',
+    'southwest',
+    'skyscanner',
+    'agoda',
+    'trip.com',
+    'tripadvisor',
+    'google travel',
+    'vrbo',
   ];
 
   static const List<String> _onlineShoppingKeywords = [
@@ -226,6 +493,25 @@ class ExpenseJudgeService {
     'メルカリ',
     'mercari',
     '通販',
+    'online shopping',
+    'e-commerce',
+    'ecommerce',
+    'shopping',
+    'etsy',
+    'shein',
+    'temu',
+    'aliexpress',
+    'ebay',
+    'whatnot',
+    'shopify',
+    'shop app',
+    'depop',
+    'poshmark',
+    'asos',
+    'instacart',
+    'groupon',
+    'klarna',
+    'affirm',
   ];
 
   static const List<String> _kidsKeywords = [
@@ -240,6 +526,23 @@ class ExpenseJudgeService {
     'キッズ',
     '子ども',
     '子供',
+    'toys r us',
+    'babies r us',
+    'akachan honpo',
+    'nishimatsuya',
+    'toy',
+    'toys',
+    'baby',
+    'babies',
+    'kids',
+    'children',
+    'child',
+    'childcare',
+    'nursery',
+    'diaper',
+    'diapers',
+    'stroller',
+    'school supplies',
   ];
 
   static const List<String> _gamblingKeywords = [
@@ -254,6 +557,23 @@ class ExpenseJudgeService {
     'ロト',
     'casino',
     'カジノ',
+    'gambling',
+    'betting',
+    'sportsbook',
+    'sports betting',
+    'pachinko',
+    'slot',
+    'slots',
+    'lottery',
+    'lotto',
+    'horse racing',
+    'racecourse',
+    'keiba',
+    'boat race',
+    'keirin',
+    'bet365',
+    'draftkings',
+    'fanduel',
   ];
 
   static const List<String> _luxuryKeywords = [
@@ -271,6 +591,24 @@ class ExpenseJudgeService {
     '高級',
     'ジュエリー',
     'ブランド',
+    'rolex',
+    'balenciaga',
+    'dior',
+    'celine',
+    'loewe',
+    'fendi',
+    'bvlgari',
+    'bulgari',
+    'coach',
+    'michael kors',
+    'ysl',
+    'saint laurent',
+    'luxury',
+    'premium',
+    'jewelry',
+    'jewellery',
+    'watch',
+    'watches',
   ];
 
   static const List<String> _sensitiveKeywords = [
@@ -281,6 +619,18 @@ class ExpenseJudgeService {
     'キャバクラ',
     '風俗',
     'メンズエステ',
+    'adult',
+    'adult entertainment',
+    'host club',
+    'cabaret',
+    'girls bar',
+    'soapland',
+    'massage parlor',
+    'men\'s esthetic',
+    'mens esthetic',
+    'escort',
+    'night club',
+    'strip club',
   ];
 
   static ExpenseJudgeResult judge({
@@ -289,12 +639,13 @@ class ExpenseJudgeService {
   }) {
     final store = expense.storeName.trim().toLowerCase();
     final category = expense.category.trim();
+    final categoryLower = category.toLowerCase();
     final amount = expense.amount;
     final spendingRate = totalBudget <= 0 ? 0.0 : amount / totalBudget;
 
     final tags = <ExpenseJudgeTag>[];
 
-    if (_matches(category, store, 'カフェ', _cafeKeywords)) {
+    if (_matchesAnyCategory(categoryLower, store, const ['カフェ', 'cafe', 'coffee'], _cafeKeywords)) {
       tags.addAll([ExpenseJudgeTag.cafe, ExpenseJudgeTag.discretionary]);
       return ExpenseJudgeResult(
         tags: tags,
@@ -305,7 +656,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_matches(category, store, 'コンビニ', _convenienceKeywords)) {
+    if (_matchesAnyCategory(categoryLower, store, const ['コンビニ', 'convenience', 'convenience store'], _convenienceKeywords)) {
       tags.addAll([ExpenseJudgeTag.convenience, ExpenseJudgeTag.discretionary]);
       return ExpenseJudgeResult(
         tags: tags,
@@ -316,7 +667,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_matches(category, store, 'スーパー', _supermarketKeywords)) {
+    if (_matchesAnyCategory(categoryLower, store, const ['スーパー', 'supermarket', 'grocery', 'groceries'], _supermarketKeywords)) {
       tags.addAll([
         ExpenseJudgeTag.supermarket,
         ExpenseJudgeTag.essential,
@@ -332,9 +683,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _ceremonyKeywords) ||
-        category == '冠婚葬祭' ||
-        category == 'お祝い' ||
-        category == '贈り物') {
+        _categoryIn(categoryLower, const ['冠婚葬祭', 'お祝い', '贈り物', 'ceremony', 'gift', 'gifts', 'celebration'])) {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.ceremony, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -344,7 +693,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _drinkingKeywords) || category == '飲み' || category == '居酒屋') {
+    if (_containsAny(store, _drinkingKeywords) || _categoryIn(categoryLower, const ['飲み', '居酒屋', 'drinking', 'bar', 'pub'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.drinking, ExpenseJudgeTag.social, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -354,7 +703,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _fashionKeywords) || category == '服' || category == 'ファッション') {
+    if (_containsAny(store, _fashionKeywords) || _categoryIn(categoryLower, const ['服', 'ファッション', 'fashion', 'clothes', 'clothing', 'apparel'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.fashion, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -364,7 +713,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _dailyGoodsKeywords) || category == '日用品') {
+    if (_containsAny(store, _dailyGoodsKeywords) || _categoryIn(categoryLower, const ['日用品', 'daily goods', 'household', 'household goods'])) {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.dailyGoods, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -375,10 +724,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _movieKeywords) ||
-        category == '映画' ||
-        category == '娯楽' ||
-        category == 'エンタメ' ||
-        category == 'レジャー') {
+        _categoryIn(categoryLower, const ['映画', '娯楽', 'エンタメ', 'レジャー', 'movie', 'movies', 'cinema', 'entertainment', 'leisure'])) {
       return ExpenseJudgeResult(
         tags: const [
           ExpenseJudgeTag.movie,
@@ -393,11 +739,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _karaokeKeywords) ||
-        category == 'カラオケ' ||
-        category == '娯楽' ||
-        category == 'エンタメ' ||
-        category == 'レジャー' ||
-        category == 'ストレス発散') {
+        _categoryIn(categoryLower, const ['カラオケ', '娯楽', 'エンタメ', 'レジャー', 'ストレス発散', 'karaoke', 'entertainment', 'leisure', 'stress relief'])) {
       return ExpenseJudgeResult(
         tags: const [
           ExpenseJudgeTag.karaoke,
@@ -412,11 +754,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _arcadeKeywords) ||
-        category == 'ゲームセンター' ||
-        category == '娯楽' ||
-        category == 'エンタメ' ||
-        category == 'レジャー' ||
-        category == '遊び') {
+        _categoryIn(categoryLower, const ['ゲームセンター', '娯楽', 'エンタメ', 'レジャー', '遊び', 'arcade', 'game center', 'entertainment', 'leisure', 'play'])) {
       return ExpenseJudgeResult(
         tags: const [
           ExpenseJudgeTag.arcade,
@@ -430,7 +768,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _entertainmentKeywords) || category == '娯楽') {
+    if (_containsAny(store, _entertainmentKeywords) || _categoryIn(categoryLower, const ['娯楽', 'エンタメ', 'レジャー', 'entertainment', 'leisure'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.entertainment, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -440,7 +778,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _travelKeywords) || category == '旅行') {
+    if (_containsAny(store, _travelKeywords) || _categoryIn(categoryLower, const ['旅行', 'travel', 'trip', 'hotel'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.travel, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -451,10 +789,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _onlineShoppingKeywords) ||
-        category == 'ネットショッピング' ||
-        category == '通販' ||
-        category == '日用品' ||
-        category == '服') {
+        _categoryIn(categoryLower, const ['ネットショッピング', '通販', '日用品', '服', 'online shopping', 'shopping', 'e-commerce', 'ecommerce', 'daily goods', 'clothing', 'fashion'])) {
       return ExpenseJudgeResult(
         tags: const [
           ExpenseJudgeTag.onlineShopping,
@@ -468,9 +803,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _kidsKeywords) ||
-        category == '子ども' ||
-        category == '子供' ||
-        category == '育児') {
+        _categoryIn(categoryLower, const ['子ども', '子供', '育児', 'kids', 'children', 'childcare', 'family'])) {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.kids, ExpenseJudgeTag.family, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -480,7 +813,26 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _gamblingKeywords) || category == 'ギャンブル') {
+    if (_containsAny(store, _sensitiveKeywords) ||
+        _categoryIn(
+          categoryLower,
+          const [
+            'センシティブ',
+            'sensitive',
+            'adult',
+            'adult entertainment',
+          ],
+        )) {
+      return const ExpenseJudgeResult(
+        tags: [ExpenseJudgeTag.sensitive],
+        severity: ExpenseJudgeSeverity.normal,
+        shouldNotify: false,
+        shouldAskAi: false,
+        reasonCode: 'sensitive_detected',
+      );
+    }
+
+    if (_containsAny(store, _gamblingKeywords) || _categoryIn(categoryLower, const ['ギャンブル', 'gambling', 'casino', 'betting'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.gambling, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -491,8 +843,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _luxuryKeywords) ||
-        category == '高級品' ||
-        category == 'ブランド') {
+        _categoryIn(categoryLower, const ['高級品', 'ブランド', 'luxury', 'brand', 'premium'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.luxury, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -502,17 +853,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _sensitiveKeywords)) {
-      return const ExpenseJudgeResult(
-        tags: [ExpenseJudgeTag.sensitive],
-        severity: ExpenseJudgeSeverity.normal,
-        shouldNotify: false,
-        shouldAskAi: false,
-        reasonCode: 'sensitive_detected',
-      );
-    }
-
-    if (_matches(category, store, '外食', const [])) {
+    if (_matchesAnyCategory(categoryLower, store, const ['外食', 'dining', 'restaurant', 'restaurants', 'eating out'], const [])) {
       tags.addAll([ExpenseJudgeTag.dining, ExpenseJudgeTag.discretionary]);
       return ExpenseJudgeResult(
         tags: tags,
@@ -523,7 +864,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _hobbyKeywords) || category == '趣味') {
+    if (_containsAny(store, _hobbyKeywords) || _categoryIn(categoryLower, const ['趣味', 'hobby', 'hobbies'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.hobby, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -533,7 +874,7 @@ class ExpenseJudgeService {
       );
     }
 
-    if (_containsAny(store, _beautyKeywords) || category == '美容') {
+    if (_containsAny(store, _beautyKeywords) || _categoryIn(categoryLower, const ['美容', 'beauty', 'self-care', 'self care', 'cosmetics'])) {
       return ExpenseJudgeResult(
         tags: const [ExpenseJudgeTag.beauty, ExpenseJudgeTag.discretionary],
         severity: _severityFromRate(spendingRate),
@@ -544,9 +885,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _healthKeywords) ||
-        category == '医療' ||
-        category == '健康' ||
-        category == '薬') {
+        _categoryIn(categoryLower, const ['医療', '健康', '薬', 'health', 'medical', 'medicine', 'pharmacy'])) {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.health, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -557,12 +896,7 @@ class ExpenseJudgeService {
     }
 
     if (_containsAny(store, _transportKeywords) ||
-        category == '交通' ||
-        category == '交通費' ||
-        category == '電車' ||
-        category == 'バス' ||
-        category == 'ガソリン' ||
-        category == '駐車場') {
+        _categoryIn(categoryLower, const ['交通', '交通費', '電車', 'バス', 'ガソリン', '駐車場', 'transport', 'transportation', 'train', 'bus', 'taxi', 'gas', 'parking'])) {
       return const ExpenseJudgeResult(
         tags: [ExpenseJudgeTag.transport, ExpenseJudgeTag.essential],
         severity: ExpenseJudgeSeverity.normal,
@@ -604,18 +938,76 @@ class ExpenseJudgeService {
     return consecutiveStoreCount(expenses) >= minCount;
   }
 
-  static bool _matches(
-    String category,
+  static bool _matchesAnyCategory(
+    String categoryLower,
     String store,
-    String exactCategory,
+    List<String> exactCategories,
     List<String> keywords,
   ) {
-    if (category == exactCategory) return true;
+    if (_categoryIn(categoryLower, exactCategories)) return true;
     return _containsAny(store, keywords);
   }
 
+  static bool _categoryIn(String categoryLower, List<String> candidates) {
+    return candidates.any((c) => categoryLower == c.toLowerCase());
+  }
+
   static bool _containsAny(String value, List<String> keywords) {
-    return keywords.any((k) => value.contains(k.toLowerCase()));
+    final normalizedValue = _normalizeForMatch(value);
+    final tokens = _tokenizeForMatch(normalizedValue);
+
+    return keywords.any((keyword) {
+      final normalizedKeyword = _normalizeForMatch(keyword);
+      if (normalizedKeyword.isEmpty) return false;
+
+      if (_requiresTokenMatch(normalizedKeyword)) {
+        return tokens.contains(normalizedKeyword);
+      }
+
+      return normalizedValue.contains(normalizedKeyword);
+    });
+  }
+
+  static String _normalizeForMatch(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('’', "'")
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ')
+        .replaceAll('/', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static Set<String> _tokenizeForMatch(String value) {
+    return value
+        .split(RegExp(r'[^a-z0-9ぁ-んァ-ン一-龥ー]+'))
+        .where((token) => token.isNotEmpty)
+        .toSet();
+  }
+
+  static bool _requiresTokenMatch(String keyword) {
+    return const {
+      'bar',
+      'gas',
+      'inn',
+      'bus',
+      'jr',
+      'gu',
+      'hm',
+      'gap',
+      'pub',
+      'spa',
+      'zoo',
+      'ana',
+      'jal',
+      'slot',
+      'watch',
+      'gift',
+      'gifts',
+      'toy',
+      'toys',
+    }.contains(keyword);
   }
 
   static ExpenseJudgeSeverity _severityFromRate(double rate) {
