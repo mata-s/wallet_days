@@ -467,7 +467,7 @@ decoration: BoxDecoration(
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    _t('レポート・称号・上位％表示・バックアップなどのプレミアム機能が使えます', 'Unlock reports, titles, ranking percent, backups, and more'),
+                    _t('月レポート・称号・上位％表示・バックアップなどのプレミアム機能が使えます', 'Unlock Monthly reports, titles, ranking percent, backups, and more'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: Colors.black54,
                       height: 1.5,
@@ -508,7 +508,7 @@ decoration: BoxDecoration(
             _featureCard(
               context,
               icon: Icons.insert_chart_outlined_rounded,
-              title: _t('レポート', 'Reports'),
+              title: _t('月レポート', 'Monthly reports'),
               description: _t('月の振り返りを見やすく確認できます', 'Review your month more easily'),
             ),
             const SizedBox(height: 10),

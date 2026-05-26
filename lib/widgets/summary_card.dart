@@ -60,6 +60,10 @@ class SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final formatter = NumberFormat('#,###');
+    final displayRemainingPeriodDays = remainingPeriodDays < 1 ? 1 : remainingPeriodDays;
+    final displayPlannedDailyBudgetYen = displayRemainingPeriodDays <= 1
+        ? remainingBudget
+        : remainingBudget ~/ displayRemainingPeriodDays;
 
     Widget skeleton({double width = 80, double height = 18, double radius = 8}) {
       return Container(
@@ -84,7 +88,7 @@ class SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _t(context, 'この期間の残り予算', 'Remaining budget for this period'),
+              _t(context, 'この期間の残り予算', 'Money left this month'),
               style: theme.textTheme.titleSmall?.copyWith(
                 color: Colors.black45,
                 fontWeight: FontWeight.w600,
@@ -101,7 +105,11 @@ class SummaryCard extends StatelessWidget {
                 child: isLoading
                     ? skeleton(width: 132, height: 14, radius: 999)
                     : Text(
-                        _t(context, '$cyclePeriod ・ 残り$remainingPeriodDays日', '$cyclePeriod ・ $remainingPeriodDays days left'),
+                        _t(
+                          context,
+                          '$cyclePeriod ・ 残り$displayRemainingPeriodDays日',
+                          '$cyclePeriod ・ $displayRemainingPeriodDays ${displayRemainingPeriodDays == 1 ? 'day' : 'days'} left',
+                        ),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.black87,
                           fontWeight: FontWeight.w700,
@@ -123,7 +131,7 @@ class SummaryCard extends StatelessWidget {
                   ),
             const SizedBox(height: 6),
             Text(
-              _t(context, 'この期間で今使える残りのお金', 'Money you can still use in this period'),
+              _t(context, 'この期間で今使える残りのお金', 'Available to spend'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: Colors.black45,
                 fontWeight: FontWeight.w500,
@@ -148,8 +156,11 @@ class SummaryCard extends StatelessWidget {
                     final showCharacter =
                         !isLoading && characterImagePath != null;
 
-                    final isLatePeriod = remainingPeriodDays <= 3;
-                    final isEndingSoon = remainingPeriodDays <= 7;
+                    final isLatePeriod = displayRemainingPeriodDays <= 3;
+                    final isEndingSoon = displayRemainingPeriodDays <= 7;
+                    final isPaceAheadOfPeriod = hasBudget &&
+                        displayRemainingPeriodDays > 1 &&
+                        walletLifeDays < displayRemainingPeriodDays;
 
                     String _getAdvice(double progress) {
                       if (!hasBudget) {
@@ -166,14 +177,25 @@ class SummaryCard extends StatelessWidget {
                       // 予算オーバーは時期に関係なく状態ベースで扱う
                       if (progress >= 1) {
                         final advices = [
-                          _t(context, '来月に期待だね', 'Let’s reset next month.'),
+                          _t(context, '来月はもう少しペースを落としてみよう', 'Let’s slow the pace a little next month.'),
                           _t(context, '今月はここまでだね', 'That may be it for this month.'),
                           _t(context, '今回はちょっと使いすぎたね', 'You spent a little too much this time.'),
-                          _t(context, '次の期間に向けて作戦を変えよう', 'Let’s change the plan for the next period.'),
+                          _t(context, '次の期間に向けて作戦を考えよう', 'Let’s think about the plan for the next period.'),
                           if (isLatePeriod) ...[
                             _t(context, 'ゴールは近いから、ここからは追加ダメージを止めたいね。', 'The finish is close, so let’s stop the extra damage here.'),
                             _t(context, 'ラインは越えたけど、月末は近い。落ち着いて着地しよう。', 'The budget line is crossed, but the month is nearly over. Let’s land it calmly.'),
                           ],
+                        ];
+                        advices.shuffle();
+                        return advices.first;
+                      }
+
+                      if (isPaceAheadOfPeriod && progress >= 0.5) {
+                        final advices = [
+                          _t(context, '残り日数に対して、少しペースが早めだね', 'Your pace is a little fast for the days left.'),
+                          _t(context, 'このままだと、少し早く尽きるかも', 'At this pace, it may run out a little early.'),
+                          _t(context, '予算は残ってるけど、ペースは少し見ておきたいね', 'There is money left, but the pace is worth watching.'),
+                          _t(context, '残り期間を考えると、ここから少し整えたいね', 'Considering the days left, it may be good to adjust from here.'),
                         ];
                         advices.shuffle();
                         return advices.first;
@@ -198,7 +220,7 @@ class SummaryCard extends StatelessWidget {
                             ]
                           : progress >= 0.75
                               ? [
-                                  _t(context, 'ここから少し意識していこう', 'Start paying a little more attention.'),
+                                  _t(context, 'ここから少し意識していこう', 'Time to pay a little more attention.'),
                                   _t(context, '油断は禁物', 'Don’t let your guard down.'),
                                   _t(context, 'ここから少しだけ引き締めよう', 'Time to tighten things up a bit.'),
                                 ]
@@ -243,6 +265,16 @@ class SummaryCard extends StatelessWidget {
                         return labels.first;
                       }
 
+                      if (isPaceAheadOfPeriod && progress >= 0.5) {
+                        final labels = [
+                          _t(context, 'ペース早めだね', 'Pace is a bit fast'),
+                          _t(context, '少し先行中', 'A little ahead'),
+                          _t(context, 'ここから調整だね', 'Time to adjust'),
+                        ];
+                        labels.shuffle();
+                        return labels.first;
+                      }
+
                       if (isLatePeriod && hasBudget) {
                         final labels = progress < 0.55
                             ? [
@@ -275,7 +307,7 @@ class SummaryCard extends StatelessWidget {
                       final List<String> labels = progress >= 0.9
                           ? [
                               _t(context, '残りわずか', 'Almost out'),
-                              _t(context, 'もうすぐ限界かも…', 'Almost at the limit...'),
+                              _t(context, 'もうすぐ限界かも…', 'Almost out of room...'),
                             ]
                           : progress >= 0.75
                               ? [
@@ -288,8 +320,8 @@ class SummaryCard extends StatelessWidget {
                                       _t(context, 'いいペースだね', 'Good pace'),
                                     ]
                                   : [
-                                      _t(context, '余裕ゾーンだね', 'Comfort zone'),
-                                      _t(context, 'かなり余裕あるよ', 'Plenty of room'),
+                                      _t(context, '余裕ゾーンだね', 'You’re on track'),
+                                      _t(context, 'かなり余裕あるよ', 'Plenty left'),
                                     ];
                       labels.shuffle();
                       return labels.first;
@@ -485,7 +517,7 @@ class SummaryCard extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          _t(context, '財布の余命', 'Wallet life'),
+                          _t(context, '財布の余命', 'Spending pace'),
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -498,8 +530,8 @@ class SummaryCard extends StatelessWidget {
                       ? skeleton(width: 120, height: 28, radius: 10)
                       : _AnimatedCountText(
                           value: walletLifeDays,
-                          prefix: _t(context, 'あと約', 'About '),
-                          suffix: _t(context, '日分', ' days left'),
+                          prefix: _t(context, 'あと約', 'Your money will last about '),
+                          suffix: _t(context, '日分', ' days'),
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
@@ -510,7 +542,7 @@ class SummaryCard extends StatelessWidget {
                     _t(
                       context,
                       'このペースで使った場合の目安',
-                      'Estimated at your current pace',
+                      'At your current pace',
                     ),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: Colors.black54,
@@ -544,19 +576,28 @@ class SummaryCard extends StatelessWidget {
                                   ),
                           if (dailySpendingPaceYen != null && plannedDailyBudgetYen != null)
                             const SizedBox(height: 6),
-                          if (plannedDailyBudgetYen != null)
-                            isLoading
-                                ? skeleton(width: 180, height: 16, radius: 8)
-                                : Text(
-                                    _isJa(context)
-                                      ? '日割りで使える目安：約¥${formatter.format(plannedDailyBudgetYen)}'
-                                      : 'Daily budget: ${_formatMoney(context, plannedDailyBudgetYen!)}',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: Colors.black87,
-                                      fontWeight: FontWeight.w600,
-                                      height: 1.3,
-                                    ),
-                                  ),
+                          if (plannedDailyBudgetYen != null) ...[
+                            (() {
+                              final isLastDay = displayRemainingPeriodDays <= 1;
+                              if (isLoading) {
+                                return skeleton(width: 180, height: 16, radius: 8);
+                              }
+                              return Text(
+                                _isJa(context)
+                                    ? (isLastDay
+                                        ? '今日使えるお金：約¥${formatter.format(remainingBudget)}'
+                                        : '日割りで使える目安：約¥${formatter.format(displayPlannedDailyBudgetYen)}')
+                                    : (isLastDay
+                                        ? 'Budget for today: ${_formatMoney(context, remainingBudget)}'
+                                        : 'Daily budget: ${_formatMoney(context, displayPlannedDailyBudgetYen)}'),
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.3,
+                                ),
+                              );
+                            })(),
+                          ],
                         ],
                       ),
                     ),

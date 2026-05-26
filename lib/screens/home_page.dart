@@ -788,12 +788,16 @@ Future<void> _syncBudgetHistoryIfNeeded() async {
 
     int realWalletLifeDays = 0;
     if (_cycleOffsetMonths == 0 && totalBudget > 0 && remainingBudgetForCalculations > 0) {
-      final totalCycleDays = endInclusive.difference(start).inDays;
-      if (totalCycleDays > 0) {
-        final plannedDailyBudget = totalBudget / totalCycleDays;
-        if (plannedDailyBudget > 0) {
-          realWalletLifeDays =
-              (remainingBudgetForCalculations / plannedDailyBudget).ceil().clamp(1, 999);
+      if (usedAmount <= 0) {
+        realWalletLifeDays = _remainingPeriodDays();
+      } else {
+        final totalCycleDays = endInclusive.difference(start).inDays + 1;
+        if (totalCycleDays > 0) {
+          final plannedDailyBudget = totalBudget / totalCycleDays;
+          if (plannedDailyBudget > 0) {
+            realWalletLifeDays =
+                (remainingBudgetForCalculations / plannedDailyBudget).ceil().clamp(1, 999);
+          }
         }
       }
     }
@@ -814,7 +818,7 @@ Future<void> _syncBudgetHistoryIfNeeded() async {
     if (_cycleOffsetMonths == 0 && totalBudget > 0 && remainingBudgetForCalculations > 0) {
       final now = getNow();
       final today = DateTime(now.year, now.month, now.day);
-      final remainingDays = endInclusive.difference(today).inDays;
+      final remainingDays = endInclusive.difference(today).inDays + 1;
       if (remainingDays > 0) {
         plannedDailyBudgetYen =
             (remainingBudgetForCalculations / remainingDays).floor();
@@ -1203,7 +1207,7 @@ DateTime get _currentCycleEnd {
   );
 
   final diff = end.difference(today).inDays;
-  return diff < 0 ? 0 : diff;
+  return diff < 0 ? 0 : diff + 1;
 }
 
 
@@ -3453,13 +3457,21 @@ void _openFullTimeline() {
           subLines.length >= 3 ? subLines.sublist(2).join('\n') : '';
 
       roastCards.add((
-        title: roastResult.title,
+        title: _t('財布からひとこと', 'A note from your wallet'),
         message: roastResult.message,
         subMessage: monthlySubMessage,
       ));
 
       roastCards.add((
-        title: _t('財布からもうひとこと', 'One more note from your wallet'),
+  title: currentCycleExpenses.isNotEmpty
+    ? _t(
+        '${currentCycleExpenses.first.storeName}、記録したよ',
+        '${currentCycleExpenses.first.storeName} logged',
+      )
+    : _t(
+        '最近の支出',
+        'Recent spending',
+      ),
         message: latestMessage,
         subMessage: latestSubMessage,
       ));

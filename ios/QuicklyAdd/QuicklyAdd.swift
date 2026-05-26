@@ -242,7 +242,6 @@ struct QuicklyAddEntryView: View {
 
             Spacer(minLength: 0)
         }
-        .widgetURL(entry.widgetData.url ?? URL(string: QuicklyAddDefaults.fallbackURLString))
     }
 
     private var mediumView: some View {
@@ -296,7 +295,6 @@ struct QuicklyAddEntryView: View {
 
             Spacer()
         }
-        .widgetURL(entry.widgetData.url ?? URL(string: QuicklyAddDefaults.fallbackURLString))
     }
 
     private func formatMoney(_ amount: Int) -> String {

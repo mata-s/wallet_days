@@ -1,4 +1,4 @@
-package com.matayoshi.saiyome
+package com.matayoshi.walletdays
 
 import io.flutter.embedding.android.FlutterActivity
 

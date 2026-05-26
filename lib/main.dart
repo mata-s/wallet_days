@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:saiyome/screens/welcome_page.dart';
 import 'package:saiyome/screens/home_page.dart';
@@ -115,13 +116,15 @@ Future<void> ensureProfileExists() async {
 }
 
 Future<void> initRevenueCat() async {
-  // RevenueCatのiOS Public SDK Key
+  // RevenueCat Public SDK Keys
   const iosApiKey = 'appl_fWfmyhRwBvLnYUArWEdrKtyyFkB';
-  // const androidApiKey = 'goog_your_android_public_sdk_key';
+  const androidApiKey = 'goog_NnJojiuWeYLKgvOoUXsVzfzBYiZ';
 
-  final configuration = PurchasesConfiguration(
-    iosApiKey,
-  );
+  final apiKey = defaultTargetPlatform == TargetPlatform.android
+      ? androidApiKey
+      : iosApiKey;
+
+  final configuration = PurchasesConfiguration(apiKey);
 
   debugPrint('[RevenueCatDebug] Configuring RevenueCat...');
   await Purchases.configure(configuration);
@@ -184,7 +187,6 @@ class _SaiyomeAppState extends State<SaiyomeApp> {
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _uriSubscription;
   bool _handledInitialUri = false;
-  bool _isResettingHomeFromWidget = false;
 
   Locale _resolveLocale(Locale? deviceLocale) {
     if (deviceLocale?.languageCode == 'ja') {
@@ -223,35 +225,11 @@ class _SaiyomeAppState extends State<SaiyomeApp> {
     debugPrint('[DeepLink] Received uri: $uri');
 
     if (uri.scheme != 'walletdays') return;
-    if (uri.host != 'quick-add' && uri.host != 'add-expense') return;
+    if (uri.host != 'add-expense') return;
 
-    // Widgetから起動した場合は、HomePageをrootにして開く。
-    // 以前の画面スタックを残すと、ホーム画面からスワイプで戻れるように見えるためリセットする。
-    _resetToHomeFromWidget();
+    navigatorKey.currentState?.popUntil((route) => route.isFirst);
   }
 
-  void _resetToHomeFromWidget({int retryCount = 0}) {
-    if (_isResettingHomeFromWidget) return;
-    _isResettingHomeFromWidget = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final navigator = navigatorKey.currentState;
-      if (navigator == null || !navigator.mounted) {
-        _isResettingHomeFromWidget = false;
-        if (retryCount < 20) {
-          Future<void>.delayed(
-            const Duration(milliseconds: 200),
-            () => _resetToHomeFromWidget(retryCount: retryCount + 1),
-          );
-        }
-        return;
-      }
-
-      navigator.popUntil((route) => route.isFirst);
-
-      _isResettingHomeFromWidget = false;
-    });
-  }
 
   @override
   void dispose() {

@@ -50,7 +50,8 @@ class DecimalMoneyFormatter extends TextInputFormatter {
       return newValue;
     }
 
-    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    final normalized = text.replaceAll(',', '');
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(normalized);
     if (!valid) {
       return oldValue;
     }
@@ -123,7 +124,7 @@ class _BudgetPageState extends State<BudgetPage> {
     }
 
     final dollars = amount / 100;
-    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    return NumberFormat('#,##0.00').format(dollars);
   }
 
   String _formatMoneyDisplay(int amount) {
@@ -150,6 +151,13 @@ class _BudgetPageState extends State<BudgetPage> {
     return [DecimalMoneyFormatter()];
   }
 
+  void _formatMoneyControllerOnBlur(TextEditingController controller) {
+  if (_currentLang() == 'ja') return;
+
+  final amount = _parseMoneyInput(controller.text);
+  controller.text = _formatMoneyInput(amount);
+}
+
   final TextEditingController _totalBudgetController =
       TextEditingController();
   final TextEditingController _extraAmountController =
@@ -169,7 +177,7 @@ class _BudgetPageState extends State<BudgetPage> {
   DateTime? _currentOpenPeriodStart;
   int _manualBudgetBuffer = 0;
   int _usableBudgetBase = 0;
-
+  
   Future<bool> _isPremiumUser() async {
   try {
     final customerInfo = await Purchases.getCustomerInfo();
@@ -309,6 +317,10 @@ DateTime _currentPeriodStart(DateTime now) {
 
   int get _remainingUsableBudget {
     return _usableBudgetBase - _currentTotalBudgetValue;
+  }
+
+  bool get _isOverUsableBudget {
+    return _hasUsableBudgetBase && _remainingUsableBudget < 0;
   }
   
   bool get _hasUsableBudgetBase {
@@ -886,7 +898,7 @@ child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _t('今月の使える予算', 'Available this month'),
+              _t('今月の使える予算', 'Monthly budget'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: Colors.black54,
                 fontWeight: FontWeight.w600,
@@ -900,12 +912,26 @@ child: Column(
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              _t('あと使える金額', 'Remaining amount'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.black54,
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              children: [
+                if (_isOverUsableBudget) ...[
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  _isOverUsableBudget
+                      ? _t('予算オーバー', 'Over budget')
+                      : _t('あと使える金額', 'Left to spend'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _isOverUsableBudget ? Colors.red : Colors.black54,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -922,30 +948,38 @@ child: Column(
       ),
       const SizedBox(height: 12),
     ],
-    TextField(
-      controller: _totalBudgetController,
-      keyboardType: TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: _moneyInputFormatters(),
-      onChanged: (_) {
-        if (!_useCategoryBudget) {
-          setState(() {});
-          return;
+    Focus(
+      onFocusChange: (hasFocus) {
+        if (!hasFocus) {
+          _formatMoneyControllerOnBlur(_totalBudgetController);
         }
-        setState(() {
-          _syncExtraAmountFromTotalBudget();
-        });
       },
-      decoration: InputDecoration(
-        labelText: _t('予算', 'Budget'),
-        hintText: _t('50,000', '2,000'),
-        suffixText:  _t('円', '\$'),
-        border: const OutlineInputBorder(),
-        helperText: _useCategoryBudget
-            ? _t(
-              'カテゴリ合計 ${_formatMoneyDisplay(_categoryBudgetSum)} を反映中',
-              'Reflecting category total ${_formatMoneyDisplay(_categoryBudgetSum)}',
-              )
-            : null,
+      child: TextField(
+        controller: _totalBudgetController,
+        keyboardType: TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: _moneyInputFormatters(),
+        onChanged: (_) {
+          if (!_useCategoryBudget) {
+            setState(() {});
+            return;
+          }
+          setState(() {
+            _syncExtraAmountFromTotalBudget();
+          });
+        },
+        decoration: InputDecoration(
+          labelText: _t('予算', 'Budget'),
+          hintText: _t('50,000', '2,000.00'),
+          suffixText: _currentLang() == 'ja' ? '円' : null,
+          prefixText: _currentLang() == 'ja' ? null : '\$',
+          border: const OutlineInputBorder(),
+          helperText: _useCategoryBudget
+              ? _t(
+                  'カテゴリ合計 ${_formatMoneyDisplay(_categoryBudgetSum)} を反映中',
+                  'Category total: ${_formatMoneyDisplay(_categoryBudgetSum)}',
+                )
+              : null,
+        ),
       ),
     ),
   ],
@@ -963,7 +997,7 @@ child: Column(
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(_t('カテゴリ別予算を設定する', 'Use category budgets')),
+                  title: Text(_t('カテゴリ別予算を設定する', 'Enable category budgets')),
                   value: _useCategoryBudget,
                   onChanged: (value) {
                     setState(() {
@@ -1139,7 +1173,13 @@ child: Column(
                             ],
                           ),
                           const SizedBox(height: 8),
-                          TextField(
+                          Focus(
+                            onFocusChange: (hasFocus) {
+                              if (!hasFocus) {
+                                _formatMoneyControllerOnBlur(budgetController);
+                              }
+                            },
+                            child: TextField(
                             controller: budgetController,
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: _moneyInputFormatters(),
@@ -1152,10 +1192,12 @@ child: Column(
                             },
                             decoration: InputDecoration(
                               labelText: _t('予算', 'Budget'),
-                              hintText: _t('2,000', '100'),
-                              suffixText:  _t('円', '\$'),
+                              hintText: _t('2,000', '100.00'),
+                              suffixText: _currentLang() == 'ja' ? '円' : null,
+                              prefixText: _currentLang() == 'ja' ? null : '\$',
                               border: const OutlineInputBorder(),
                             ),
+                          ),
                           ),
                           if (isNarrow) ...[
                             const SizedBox(height: 8),
@@ -1223,28 +1265,36 @@ child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _t('カテゴリ外で使える金額', 'Extra budget (outside categories)'),
+                          _t('カテゴリ外で使える金額', 'Unassigned budget'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.black54,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: _extraAmountController,
-                          keyboardType: TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: _moneyInputFormatters(),
-                          onChanged: (_) {
-                            if (!_useCategoryBudget) return;
-                            setState(() {
-                              _syncTotalBudgetFromExtraAmount();
-                            });
+                        Focus(
+                          onFocusChange: (hasFocus) {
+                            if (!hasFocus) {
+                              _formatMoneyControllerOnBlur(_extraAmountController);
+                            }
                           },
-                          decoration: InputDecoration(
-                            labelText: _t('カテゴリ外で使える金額', 'Extra budget'),
-                            hintText: _t('2,000', '100'),
-                            suffixText:  _t('円', '\$'),
-                            border: const OutlineInputBorder(),
+                          child: TextField(
+                            controller: _extraAmountController,
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: _moneyInputFormatters(),
+                            onChanged: (_) {
+                              if (!_useCategoryBudget) return;
+                              setState(() {
+                                _syncTotalBudgetFromExtraAmount();
+                              });
+                            },
+                            decoration: InputDecoration(
+                              labelText: _t('カテゴリ外で使える金額', 'Unassigned budget'),
+                              hintText: _t('2,000', '100.00'),
+                              suffixText: _currentLang() == 'ja' ? '円' : null,
+                              prefixText: _currentLang() == 'ja' ? null : '\$',
+                              border: const OutlineInputBorder(),
+                            ),
                           ),
                         ),
                       ],

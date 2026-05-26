@@ -19,11 +19,11 @@ class WidgetDangerCategory {
 class WidgetSyncService {
   static const String appGroupId = 'group.com.matayoshi.walletdays';
   static const String iOSWidgetName = 'QuicklyAdd';
+  static const String androidWidgetName = 'WalletDaysWidgetProvider';
   static const String remainingBudgetKey = 'remaining_budget';
   static const String remainingAmountTextKey = 'remaining_amount_text';
   static const String titleKey = 'quick_add_title';
   static const String remainingTitleKey = 'quick_add_remaining_title';
-  static const String urlKey = 'quick_add_url';
   static const String totalBudgetKey = 'total_budget';
 
   // Danger categories (max 2)
@@ -75,7 +75,6 @@ class WidgetSyncService {
       remainingTitleKey,
       _t(lang, '今月あと', 'Remaining this month'),
     );
-    await HomeWidget.saveWidgetData<String>(urlKey, 'walletdays://quick-add');
 
     final first = dangerCategories.isNotEmpty ? dangerCategories[0] : null;
     final second = dangerCategories.length > 1 ? dangerCategories[1] : null;
@@ -114,10 +113,14 @@ class WidgetSyncService {
       second?.budget ?? 0,
     );
 
-    await HomeWidget.updateWidget(
-      iOSName: iOSWidgetName,
-      name: iOSWidgetName,
-    );
+    try {
+      await HomeWidget.updateWidget(
+        iOSName: iOSWidgetName,
+        name: androidWidgetName,
+      );
+    } catch (_) {
+      // Widget update should not block saving budget or expenses.
+    }
   }
 
   static String _formatMoney(int amount, String lang) {

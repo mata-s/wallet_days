@@ -53,7 +53,8 @@ class DecimalMoneyFormatter extends TextInputFormatter {
       return newValue;
     }
 
-    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    final normalized = text.replaceAll(',', '');
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(normalized);
     if (!valid) {
       return oldValue;
     }
@@ -77,6 +78,7 @@ class AddExpensePage extends StatefulWidget {
 class _AddExpensePageState extends State<AddExpensePage> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _storeController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode();
 
   final NumberFormat _yenFormatter = NumberFormat('#,###');
 
@@ -85,6 +87,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
   List<String> _frequentStores = [];
   
   Map<String, List<int>> _storeAmounts = {};
+  Map<String, String> _storeCategories = {};
   String? _languageOverride; // 'ja' or 'en'
 
   Future<void> _loadLanguagePreference() async {
@@ -126,7 +129,13 @@ class _AddExpensePageState extends State<AddExpensePage> {
     }
 
     final dollars = amount / 100;
-    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    return NumberFormat('#,##0.00').format(dollars);
+  }
+  void _formatMoneyControllerOnBlur(TextEditingController controller) {
+    if (_currentLang() == 'ja') return;
+
+    final amount = _parseMoneyInput(controller.text);
+    controller.text = _formatMoneyInput(amount);
   }
 
   String _formatMoneyDisplay(int amount) {
@@ -160,6 +169,11 @@ bool _didApplyInitialExpense = false;
     super.initState();
     debugPrint('🔥 AddExpensePage opened');
     _loadLanguagePreference();
+    _amountFocusNode.addListener(() {
+      if (!_amountFocusNode.hasFocus) {
+        _formatMoneyControllerOnBlur(_amountController);
+      }
+    });
 
     _loadCategories();
     _loadFrequentStores();
@@ -210,6 +224,7 @@ Future<void> _loadFrequentStores() async {
 
   final Map<String, int> countMap = {};
   final Map<String, Map<int, int>> amountCountMap = {};
+  final Map<String, Map<String, int>> categoryCountMap = {};
 
   for (final expense in expenses) {
     final store = expense.storeName.trim();
@@ -220,6 +235,13 @@ Future<void> _loadFrequentStores() async {
     amountCountMap[store] ??= {};
     amountCountMap[store]![expense.amount] =
         (amountCountMap[store]![expense.amount] ?? 0) + 1;
+
+    final category = expense.category.trim();
+    if (category.isNotEmpty) {
+      categoryCountMap[store] ??= {};
+      categoryCountMap[store]![category] =
+          (categoryCountMap[store]![category] ?? 0) + 1;
+    }
   }
 
   final sortedStores = countMap.entries.toList()
@@ -244,12 +266,27 @@ Future<void> _loadFrequentStores() async {
         .toList();
   }
 
+  final Map<String, String> storeCategories = {};
+  for (final entry in categoryCountMap.entries) {
+    final sortedCategories = entry.value.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) return byCount;
+        return a.key.compareTo(b.key);
+      });
+
+    if (sortedCategories.isNotEmpty) {
+      storeCategories[entry.key] = sortedCategories.first.key;
+    }
+  }
+
   setState(() {
     _frequentStores = sortedStores
         .map((entry) => entry.key)
         .take(8)
         .toList();
     _storeAmounts = storeAmounts;
+    _storeCategories = storeCategories;
   });
 }
 
@@ -357,7 +394,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
     const Duration(minutes: 15),
   ),
   notificationDetails: details,
-  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
 );
   }
   // Future<void> _openReceiptScanPage() async {
@@ -392,6 +429,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
   // }
 
   Future<void> _saveExpense() async {
+    _formatMoneyControllerOnBlur(_amountController);
     final amountText = _amountController.text.trim();
     final store = _storeController.text.trim();
 
@@ -533,6 +571,7 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
 
   @override
   void dispose() {
+    _amountFocusNode.dispose();
     _amountController.dispose();
     _storeController.dispose();
     super.dispose();
@@ -597,6 +636,12 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                           _storeController.selection = TextSelection.collapsed(
                             offset: _storeController.text.length,
                           );
+
+                          final suggestedCategory = _storeCategories[store];
+                          if (suggestedCategory != null &&
+                              _categories.any((category) => category.name == suggestedCategory)) {
+                            _selectedCategory = suggestedCategory;
+                          }
                         });
                       },
                     );
@@ -608,12 +653,18 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
               const SizedBox(height: 8),
               TextField(
                 controller: _amountController,
+                focusNode: _amountFocusNode,
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: _moneyInputFormatters(),
+                onEditingComplete: () {
+                  _formatMoneyControllerOnBlur(_amountController);
+                  FocusScope.of(context).unfocus();
+                },
                 decoration: InputDecoration(
                   hintText: _t('例: 700', 'Example: 7.00'),
                   border: const OutlineInputBorder(),
-                  suffixText: _t('円', '\$'),
+                  suffixText: _currentLang() == 'ja' ? '円' : null,
+                  prefixText: _currentLang() == 'ja' ? null : '\$',
                 ),
               ),
               if (_storeController.text.trim().isNotEmpty &&
@@ -720,7 +771,10 @@ await flutterLocalNotificationsPlugin.zonedSchedule(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     GestureDetector(
-                      onTap: () => FocusScope.of(context).unfocus(),
+                      onTap: () {
+                        _formatMoneyControllerOnBlur(_amountController);
+                        FocusScope.of(context).unfocus();
+                      },
                       child: Text(
                         _t('完了', 'Done'),
                         style: const TextStyle(

@@ -44,7 +44,8 @@ class MoneyDecimalFormatter extends TextInputFormatter {
       return newValue;
     }
 
-    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(text);
+    final normalized = text.replaceAll(',', '');
+    final valid = RegExp(r'^\d*\.?\d{0,2}$').hasMatch(normalized);
     if (!valid) {
       return oldValue;
     }
@@ -71,7 +72,9 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
   final TextEditingController _incomeController = TextEditingController();
   final TextEditingController _fixedCostTotalController = TextEditingController();
   final TextEditingController _fixedCostManualController = TextEditingController();
-  final List<Map<String, TextEditingController>> _fixedCostControllers = [];
+  final FocusNode _incomeFocusNode = FocusNode();
+  final FocusNode _fixedCostTotalFocusNode = FocusNode();
+  final List<Map<String, dynamic>> _fixedCostControllers = [];
   final NumberFormat _formatter = NumberFormat('#,###');
 
   String? _languageOverride; // 'ja' or 'en'
@@ -116,7 +119,23 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     }
 
     final dollars = amount / 100;
-    return dollars.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    return NumberFormat('#,##0.00').format(dollars);
+  }
+  void _formatMoneyControllerOnBlur(TextEditingController controller) {
+    if (_currentLang() == 'ja') return;
+
+    final amount = _parseMoneyInput(controller.text);
+    controller.text = _formatMoneyInput(amount);
+  }
+
+  void _formatAllMoneyInputsOnBlur() {
+    _formatMoneyControllerOnBlur(_incomeController);
+    _formatMoneyControllerOnBlur(_fixedCostTotalController);
+    _formatMoneyControllerOnBlur(_fixedCostManualController);
+    for (final item in _fixedCostControllers) {
+      final controller = item['amount'] as TextEditingController;
+      _formatMoneyControllerOnBlur(controller);
+    }
   }
 
   String _formatMoneyDisplay(int amount) {
@@ -169,6 +188,14 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     return value < 0 ? 0 : value;
   }
 
+  int get _usableAmountRaw {
+    return _income - _fixedCost;
+  }
+
+  bool get _isOverIncomeBase {
+    return _income > 0 && _usableAmountRaw < 0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -177,6 +204,19 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     _incomeController.addListener(_handleChanged);
     _fixedCostTotalController.addListener(_handleChanged);
     _fixedCostManualController.addListener(_handleChanged);
+
+    _incomeFocusNode.addListener(() {
+      if (!_incomeFocusNode.hasFocus) {
+        _formatMoneyControllerOnBlur(_incomeController);
+      }
+    });
+    _fixedCostTotalFocusNode.addListener(() {
+      if (!_fixedCostTotalFocusNode.hasFocus) {
+        _formatMoneyControllerOnBlur(_fixedCostTotalController);
+        _syncManualFixedCostFromDisplayedTotal();
+        _syncFixedCostTotalFromSources();
+      }
+    });
 
     _fixedCostControllers.add(_createFixedCostItem());
 
@@ -187,24 +227,37 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     if (mounted) setState(() {});
   }
 
-  Map<String, TextEditingController> _createFixedCostItem({
+  Map<String, dynamic> _createFixedCostItem({
     String name = '',
     String amount = '',
   }) {
+    final amountController = TextEditingController(text: amount);
+    final amountFocusNode = FocusNode();
     final item = {
       'name': TextEditingController(text: name),
-      'amount': TextEditingController(text: amount),
+      'amount': amountController,
+      'amountFocusNode': amountFocusNode,
     };
     item['name']!.addListener(_handleChanged);
-    item['amount']!.addListener(_handleChanged);
+    amountController.addListener(_handleChanged);
+    amountFocusNode.addListener(() {
+      if (!amountFocusNode.hasFocus) {
+        _formatMoneyControllerOnBlur(amountController);
+        _syncFixedCostTotalFromSources();
+      }
+    });
     return item;
   }
 
-  void _disposeFixedCostItem(Map<String, TextEditingController> item) {
-    item['name']!.removeListener(_handleChanged);
-    item['amount']!.removeListener(_handleChanged);
-    item['name']!.dispose();
-    item['amount']!.dispose();
+  void _disposeFixedCostItem(Map<String, dynamic> item) {
+    final nameController = item['name'] as TextEditingController;
+    final amountController = item['amount'] as TextEditingController;
+    final amountFocusNode = item['amountFocusNode'] as FocusNode;
+    nameController.removeListener(_handleChanged);
+    amountController.removeListener(_handleChanged);
+    nameController.dispose();
+    amountController.dispose();
+    amountFocusNode.dispose();
   }
 
   Future<void> _loadSavedValues() async {
@@ -242,7 +295,7 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
 
     final itemizedTotal = _fixedCostControllers.fold<int>(
       0,
-      (sum, item) => sum + _parseMoneyInput(item['amount']!.text),
+      (sum, item) => sum + _parseMoneyInput((item['amount'] as TextEditingController).text),
     );
     final manualAmount = initialFixedCost - itemizedTotal;
     _fixedCostManualController.text = _formatMoneyInput(manualAmount);
@@ -258,8 +311,8 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
       items: _fixedCostControllers
           .map(
             (item) => {
-              'name': item['name']!.text.trim(),
-              'amount': _parseMoneyInput(item['amount']!.text),
+              'name': (item['name'] as TextEditingController).text.trim(),
+              'amount': _parseMoneyInput((item['amount'] as TextEditingController).text),
             },
           )
           .toList(),
@@ -280,6 +333,8 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     _incomeController.removeListener(_handleChanged);
     _fixedCostTotalController.removeListener(_handleChanged);
     _fixedCostManualController.removeListener(_handleChanged);
+    _incomeFocusNode.dispose();
+    _fixedCostTotalFocusNode.dispose();
     _incomeController.dispose();
     _fixedCostTotalController.dispose();
     _fixedCostManualController.dispose();
@@ -289,19 +344,24 @@ class _IncomeFixedCostPageState extends State<IncomeFixedCostPage> {
     super.dispose();
   }
 
-void _syncFixedCostTotalFromSources() {
-  final total = _fixedCost;
-  _fixedCostTotalController.text = _formatMoneyInput(total);
-}
+  void _syncFixedCostTotalFromSources() {
+    // Do not rewrite the total field while the user is typing in it.
+    // In English mode this would turn `1` into `1.00` immediately and block normal input.
+    if (_fixedCostTotalFocusNode.hasFocus) return;
 
-  void _resetSingleFixedCostItem(Map<String, TextEditingController> item) {
-    item['name']!.clear();
-    item['amount']!.clear();
+    final total = _fixedCost;
+    _fixedCostTotalController.text = _formatMoneyInput(total);
   }
 
-  Widget _buildFixedCostItem(ThemeData theme, Map<String, TextEditingController> item) {
-    final nameController = item['name']!;
-    final amountController = item['amount']!;
+  void _resetSingleFixedCostItem(Map<String, dynamic> item) {
+    (item['name'] as TextEditingController).clear();
+    (item['amount'] as TextEditingController).clear();
+  }
+
+  Widget _buildFixedCostItem(ThemeData theme, Map<String, dynamic> item) {
+    final nameController = item['name'] as TextEditingController;
+    final amountController = item['amount'] as TextEditingController;
+    final amountFocusNode = item['amountFocusNode'] as FocusNode;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -347,6 +407,7 @@ void _syncFixedCostTotalFromSources() {
           const SizedBox(height: 8),
           TextField(
             controller: amountController,
+            focusNode: amountFocusNode,
             keyboardType: TextInputType.numberWithOptions(decimal: true),
             inputFormatters: _moneyInputFormatters(),
             onChanged: (_) {
@@ -356,8 +417,9 @@ void _syncFixedCostTotalFromSources() {
             },
             decoration: InputDecoration(
               labelText: _t('金額', 'Amount'),
-              hintText: _t('80,000', '1,200'),
-              suffixText: _t('円', '\$'),
+              hintText: _t('80,000', '1,200.00'),
+              suffixText: _currentLang() == 'ja' ? '円' : null,
+              prefixText: _currentLang() == 'ja' ? null : '\$',
               border: const OutlineInputBorder(),
             ),
           ),
@@ -368,6 +430,7 @@ void _syncFixedCostTotalFromSources() {
 
   Future<void> _save() async {
     FocusManager.instance.primaryFocus?.unfocus();
+    _formatAllMoneyInputsOnBlur();
     await _persistValues();
 
     final isPremium = await _isPremiumUser();
@@ -378,8 +441,8 @@ void _syncFixedCostTotalFromSources() {
         items: _fixedCostControllers
             .map(
               (item) => {
-                'name': item['name']!.text.trim(),
-                'amount': _parseMoneyInput(item['amount']!.text),
+                'name': (item['name'] as TextEditingController).text.trim(),
+                'amount': _parseMoneyInput((item['amount'] as TextEditingController).text),
               },
             )
             .toList(),
@@ -436,30 +499,33 @@ void _syncFixedCostTotalFromSources() {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _incomeController,
+                  focusNode: _incomeFocusNode,
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: _moneyInputFormatters(),
                   decoration: InputDecoration(
                     labelText: _t('収入（任意）', 'Income (optional)'),
-                    hintText: _t('200,000', '3,000'),
-                    suffixText: _t('円', '\$'),
+                    hintText: _t('200,000', '3,000.00'),
+                    suffixText: _currentLang() == 'ja' ? '円' : null,
+                    prefixText: _currentLang() == 'ja' ? null : '\$',
                     border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _fixedCostTotalController,
+                  focusNode: _fixedCostTotalFocusNode,
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: _moneyInputFormatters(),
                   onChanged: (_) {
                     setState(() {
                       _syncManualFixedCostFromDisplayedTotal();
-                      _syncFixedCostTotalFromSources();
                     });
                   },
                   decoration: InputDecoration(
                     labelText: _t('固定費・貯金（合計）', 'Fixed costs & savings (total)'),
-                    hintText: _t('70,000', '1,000'),
-                    suffixText: _t('円', '\$'),
+                    hintText: _t('70,000', '1,000.00'),
+                    suffixText: _currentLang() == 'ja' ? '円' : null,
+                    prefixText: _currentLang() == 'ja' ? null : '\$',
                     border: const OutlineInputBorder(),
                     helperText: _itemizedFixedCostTotal > 0
                         ? _t(
@@ -516,19 +582,36 @@ void _syncFixedCostTotalFromSources() {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _t('今月使えるお金', 'Available this month'),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
+                Row(
+                  children: [
+                    if (_isOverIncomeBase) ...[
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      _isOverIncomeBase
+                          ? _t('固定費・貯金が収入を超えています', 'Fixed costs exceed income')
+                          : _t('今月使えるお金', 'Available this month'),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: _isOverIncomeBase ? Colors.red : Colors.black87,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _formatMoneyDisplay(_usableAmount),
+                  _isOverIncomeBase
+                      ? '-${_formatMoneyDisplay(_usableAmountRaw.abs())}'
+                      : _formatMoneyDisplay(_usableAmount),
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
+                    color: _isOverIncomeBase ? Colors.red : null,
                   ),
                 ),
                 const SizedBox(height: 10),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class MonthlyReportPage extends StatefulWidget {
   final VoidCallback? onTapDetail;
@@ -42,6 +43,7 @@ class _MonthlyReportListBundle {
 class _MonthlyReportPageState extends State<MonthlyReportPage> {
   Future<_MonthlyReportListBundle>? _pageFuture;
   int _currentReportIndex = 0;
+  int? _selectedCategoryIndex;
   String? _languageOverride; // 'ja' or 'en'
 
   @override
@@ -77,12 +79,27 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     return '\$${dollars.toStringAsFixed(2)}';
   }
 
+  Color _getCategoryColor(int index) {
+    const colors = [
+      Colors.red,
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.pink,
+      Colors.indigo,
+    ];
+    return colors[index % colors.length];
+  }
+
   @override
   void didUpdateWidget(covariant MonthlyReportPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd) {
       _currentReportIndex = 0;
+      _selectedCategoryIndex = null;
       _setupFuture();
     }
   }
@@ -100,7 +117,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     if (userId != null) {
       final reportsResponse = await Supabase.instance.client
           .from('monthly_reports')
-          .select('period_start, period_end, total_budget, total_spent, remaining_amount, summary_text, advice_text, badges_json, rank_json')
+          .select('period_start, period_end, total_budget, total_spent, remaining_amount, summary_text, advice_text, badges_json, rank_json, category_json')
           .eq('user_id', userId)
           .order('period_start', ascending: false);
 
@@ -128,6 +145,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     if (_currentReportIndex + 1 >= reportCount) return;
     setState(() {
       _currentReportIndex += 1;
+      _selectedCategoryIndex = null;
     });
   }
 
@@ -175,6 +193,10 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
+        final categories = ((report['category_json'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
         final rank = report['rank_json'] is Map
             ? Map<String, dynamic>.from(report['rank_json'] as Map)
             : <String, dynamic>{};
@@ -196,6 +218,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
           summaryComment: summaryComment,
           rank: rank,
           badges: badges,
+          categories: categories,
         );
       },
     );
@@ -401,6 +424,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
     required String summaryComment,
     required Map<String, dynamic> rank,
     required List<Map<String, dynamic>> badges,
+    required List<Map<String, dynamic>> categories,
   }) {
     final theme = Theme.of(context);
     final isOver = remaining < 0;
@@ -487,6 +511,7 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                         onPressed: () {
                           setState(() {
                             _currentReportIndex = 0;
+                            _selectedCategoryIndex = null;
                           });
                         },
                         icon: const Icon(Icons.restart_alt_rounded),
@@ -540,7 +565,160 @@ class _MonthlyReportPageState extends State<MonthlyReportPage> {
                   formatMoney: _formatMoney,
                   languageCode: _currentLang(),
                 ),
-                const SizedBox(height: 16),
+                if (categories.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    _t('カテゴリ内訳', 'Category breakdown'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 190,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        PieChart(
+                          PieChartData(
+                            pieTouchData: PieTouchData(
+                              touchCallback: (event, response) {
+                                if (event is! FlTapUpEvent) return;
+                                final touchedSection = response?.touchedSection;
+                                if (touchedSection == null) return;
+
+                                final touchedIndex = touchedSection.touchedSectionIndex;
+                                if (touchedIndex < 0 || touchedIndex >= categories.length) return;
+
+                                setState(() {
+                                  _selectedCategoryIndex =
+                                      _selectedCategoryIndex == touchedIndex ? null : touchedIndex;
+                                });
+                              },
+                            ),
+                            sectionsSpace: 3,
+                            centerSpaceRadius: 54,
+                            startDegreeOffset: -90,
+                            sections: categories.map((category) {
+                              final sectionIndex = categories.indexOf(category);
+                              final isSelected = _selectedCategoryIndex == sectionIndex;
+                              final amount = (category['amount'] as num?)?.toDouble() ?? 0;
+                              final ratio = (category['ratio'] as num?)?.toInt() ?? 0;
+                              final colorIndex = (category['color_index'] as num?)?.toInt() ?? 0;
+
+                              return PieChartSectionData(
+                                value: amount <= 0 ? 0.01 : amount,
+                                color: _getCategoryColor(colorIndex),
+                                title: ratio >= 8 || isSelected ? '$ratio%' : '',
+                                radius: isSelected ? 52 : 42,
+                                titleStyle: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _t('今月の支出', 'Spent'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatMoney(totalSpent),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Column(
+                    children: categories.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final category = entry.value;
+                      final name = ((category['name'] as String?) ?? '').trim();
+                      final amount = (category['amount'] as num?)?.toInt() ?? 0;
+                      final ratio = (category['ratio'] as num?)?.toInt() ?? 0;
+                      final colorIndex = (category['color_index'] as num?)?.toInt() ?? 0;
+                      final color = _getCategoryColor(colorIndex);
+                      final isSelected = _selectedCategoryIndex == index;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Material(
+                          color: isSelected ? const Color(0xFFFFF8F4) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              setState(() {
+                                _selectedCategoryIndex = isSelected ? null : index;
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    width: isSelected ? 14 : 10,
+                                    height: isSelected ? 14 : 10,
+                                    decoration: BoxDecoration(
+                                      color: color,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      name.isEmpty ? _t('未分類', 'Uncategorized') : name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '$ratio%',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: isSelected ? Colors.black87 : Colors.black54,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 88,
+                                    child: Text(
+                                      _formatMoney(amount),
+                                      textAlign: TextAlign.right,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
                 if (badges.isNotEmpty) ...[
                   Text(
                     _t('今月のバッヂ', 'This month’s badges'),

@@ -231,6 +231,9 @@ Deno.serve(async (req) => {
 
     const rank = calculateRank(safeAllHistories, lang);
 
+    const categoryOrderMap = buildCategoryOrderMap(safeBudgetSetting);
+    const categoryBudgetMap = buildCategoryBudgetMap(safeBudgetSetting);
+
     const categoryMap = new Map<string, number>();
     for (const expense of safeExpenses) {
       const fallbackCategory = lang === "en" ? "Uncategorized" : "未分類";
@@ -238,12 +241,27 @@ Deno.serve(async (req) => {
       categoryMap.set(key, (categoryMap.get(key) ?? 0) + (expense.amount ?? 0));
     }
 
+    const unknownCategoryNames = Array.from(categoryMap.keys())
+      .filter((name) => !categoryOrderMap.has(name))
+      .sort((a, b) => a.localeCompare(b));
+
+    const unknownCategoryOrderMap = new Map<string, number>();
+    unknownCategoryNames.forEach((name, index) => {
+      unknownCategoryOrderMap.set(name, categoryOrderMap.size + index);
+    });
+
     const categoryJson = Array.from(categoryMap.entries())
-      .map(([name, amount]) => ({
-        name,
-        amount,
-        ratio: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
-      }))
+      .map(([name, amount]) => {
+        const categoryIndex = categoryOrderMap.get(name) ?? unknownCategoryOrderMap.get(name) ?? 0;
+        const budget = categoryBudgetMap.get(name) ?? null;
+        return {
+          name,
+          amount,
+          budget,
+          ratio: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
+          color_index: categoryIndex,
+        };
+      })
       .sort((a, b) => b.amount - a.amount);
 
     const prevText = safeHistory
@@ -908,6 +926,37 @@ function formatYen(value: number) {
 function toDateKey(value: string) {
   if (!value) return "";
   return value.includes("T") ? value.slice(0, 10) : value;
+}
+
+function buildCategoryOrderMap(setting: BudgetSettingRow | null): Map<string, number> {
+  const map = new Map<string, number>();
+  const categories = Array.isArray(setting?.categories_json)
+    ? setting!.categories_json
+    : [];
+
+  for (const category of categories) {
+    const name = String(category?.name ?? "").trim();
+    if (!name || map.has(name)) continue;
+    map.set(name, map.size);
+  }
+
+  return map;
+}
+
+function buildCategoryBudgetMap(setting: BudgetSettingRow | null): Map<string, number> {
+  const map = new Map<string, number>();
+  const categories = Array.isArray(setting?.categories_json)
+    ? setting!.categories_json
+    : [];
+
+  for (const category of categories) {
+    const name = String(category?.name ?? "").trim();
+    if (!name || map.has(name)) continue;
+    const budget = Number(category?.budget ?? 0);
+    map.set(name, Number.isFinite(budget) ? budget : 0);
+  }
+
+  return map;
 }
 
 
