@@ -188,11 +188,46 @@ static Future<Expense?> getExpenseById(int id) async {
     return null;
   }
 
+  static String _budgetHistoryPeriodKey(DateTime startDate, DateTime endDate) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    final startKey = '${startDate.year}-${two(startDate.month)}-${two(startDate.day)}';
+    final endKey = '${endDate.year}-${two(endDate.month)}-${two(endDate.day)}';
+    return '$startKey/$endKey';
+  }
+
+  static List<BudgetHistory> _dedupeBudgetHistoriesByExactPeriod(
+    List<BudgetHistory> histories,
+  ) {
+    final byPeriod = <String, BudgetHistory>{};
+
+    for (final history in histories) {
+      final key = _budgetHistoryPeriodKey(history.startDate, history.endDate);
+      final existing = byPeriod[key];
+
+      if (existing == null || history.createdAt.isAfter(existing.createdAt)) {
+        byPeriod[key] = history;
+      }
+    }
+
+    return byPeriod.values.toList();
+  }
+
   static Future<List<BudgetHistory>> getBudgetHistories() async {
     return isar.budgetHistorys.where().sortByEndDateDesc().findAll();
   }
 
   static Future<void> saveBudgetHistory(BudgetHistory history) async {
+    if (history.id == Isar.autoIncrement || history.id == 0) {
+      final existing = await getBudgetHistoryByPeriod(
+        history.startDate,
+        history.endDate,
+      );
+
+      if (existing != null) {
+        history.id = existing.id;
+      }
+    }
+
     await isar.writeTxn(() async {
       await isar.budgetHistorys.put(history);
     });
@@ -234,7 +269,9 @@ static Future<Expense?> getExpenseById(int id) async {
       }
 
       if (budgetHistories.isNotEmpty) {
-        await isar.budgetHistorys.putAll(budgetHistories);
+        final dedupedBudgetHistories =
+            _dedupeBudgetHistoriesByExactPeriod(budgetHistories);
+        await isar.budgetHistorys.putAll(dedupedBudgetHistories);
       }
     });
   }

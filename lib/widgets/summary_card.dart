@@ -298,7 +298,7 @@ class SummaryCard extends StatelessWidget {
                       if (isEndingSoon && hasBudget) {
                         final labels = [
                           _t(context, '終盤に入ってきたね', 'Entering final phase'),
-                          _t(context, 'もうすぐ終わり', 'Almost done'),
+                          _t(context, 'この期間もあと少し', 'This period is almost over'),
                         ];
                         labels.shuffle();
                         return labels.first;

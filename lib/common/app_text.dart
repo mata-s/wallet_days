@@ -12,8 +12,8 @@ class AppText {
   // Welcome説明
   static String welcomeDesc(BuildContext context) {
     return AppLocale.isJa(context)
-        ? 'すぐに使い始められます。\nあとからアカウント登録して、データを引き継ぐこともできます。'
-        : 'Start tracking your spending in seconds.\nYou can create an account later to save your data.';
+        ? 'すぐに使い始められます。\nデータのバックアップ・復元には、アカウントが必要です。'
+        : 'Start tracking your spending in seconds.\nBackup and restore require an account.';
   }
 
   // はじめる（タイトル）

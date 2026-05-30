@@ -36,12 +36,33 @@ class _PremiumPageState extends State<PremiumPage> {
   String? _errorMessage;
   String? _lastBackupFailedStep;
   String? _languageOverride; // 'ja' or 'en'
+  void Function(CustomerInfo)? _customerInfoUpdateListener;
 
   @override
   void initState() {
     super.initState();
     _loadLanguagePreference();
     _loadOfferings();
+    _customerInfoUpdateListener = (customerInfo) {
+      final isPremium = customerInfo.entitlements.active.containsKey('premium');
+      debugPrint(
+        '[PremiumPage] customerInfo update isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+      );
+      if (!mounted) return;
+      setState(() {
+        _isPremium = isPremium;
+      });
+    };
+    Purchases.addCustomerInfoUpdateListener(_customerInfoUpdateListener!);
+  }
+
+  @override
+  void dispose() {
+    final listener = _customerInfoUpdateListener;
+    if (listener != null) {
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    }
+    super.dispose();
   }
 
   Future<void> _loadLanguagePreference() async {
@@ -78,7 +99,9 @@ class _PremiumPageState extends State<PremiumPage> {
       final monthly = offerings.current?.monthly;
       final customerInfo = await Purchases.getCustomerInfo();
       final isPremium = customerInfo.entitlements.active.containsKey('premium');
-
+      debugPrint(
+        '[PremiumPage] loadOfferings isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+      );
       setState(() {
         _monthlyPackage = monthly;
         _isPremium = isPremium;
@@ -111,6 +134,9 @@ class _PremiumPageState extends State<PremiumPage> {
       final customerInfo = await Purchases.purchasePackage(package);
       final isPremium =
           customerInfo.entitlements.active.containsKey('premium');
+      debugPrint(
+        '[PremiumPage] purchase result isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+      );
 
       if (!mounted) return;
 
@@ -201,6 +227,9 @@ class _PremiumPageState extends State<PremiumPage> {
       final customerInfo = await Purchases.restorePurchases();
       final isPremium =
           customerInfo.entitlements.active.containsKey('premium');
+      debugPrint(
+        '[PremiumPage] restore result isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+      );
 
       if (!mounted) return;
 

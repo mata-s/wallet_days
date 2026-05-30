@@ -162,7 +162,7 @@ class AccountDataSyncService {
           .map((item) {
             final m = Map<String, dynamic>.from(item);
             return IncomeFixedCostItem()
-              ..name = m['title']?.toString() ?? ''
+              ..name = m['name']?.toString() ?? ''
               ..amount = (m['amount'] as num?)?.toInt() ?? 0;
           })
           .toList();
@@ -176,18 +176,15 @@ class AccountDataSyncService {
   static List<BudgetHistory> _mapBudgetHistories(dynamic rows) {
     if (rows is! List) return [];
 
-    return rows
+    final mapped = rows
         .whereType<Map>()
         .map((row) {
           final map = Map<String, dynamic>.from(row);
 
           final history = BudgetHistory()
             ..id = (map['local_id'] as num?)?.toInt() ?? 0
-            ..startDate =
-                DateTime.tryParse(map['start_date']?.toString() ?? '') ??
-                    DateTime.now()
-            ..endDate = DateTime.tryParse(map['end_date']?.toString() ?? '') ??
-                DateTime.now()
+            ..startDate = _parseDateOnly(map['start_date'])
+            ..endDate = _parseDateOnly(map['end_date'])
             ..totalBudget = (map['total_budget'] as num?)?.toInt() ?? 0
             ..totalExpense = (map['total_expense'] as num?)?.toInt() ?? 0
             ..isAchieved = (map['is_achieved'] as bool?) ?? false
@@ -200,5 +197,46 @@ class AccountDataSyncService {
           return history;
         })
         .toList();
+
+    final byPeriod = <String, BudgetHistory>{};
+
+    for (final history in mapped) {
+      final key = _historyPeriodKey(history.startDate, history.endDate);
+      final existing = byPeriod[key];
+
+      if (existing == null || _shouldPreferHistory(history, existing)) {
+        byPeriod[key] = history;
+      }
+    }
+
+    final deduped = byPeriod.values.toList()
+      ..sort((a, b) => a.endDate.compareTo(b.endDate));
+
+    if (mapped.length != deduped.length) {
+      debugPrint(
+        '[AccountDataSyncService] deduped budgetHistories ${mapped.length} -> ${deduped.length}',
+      );
+    }
+
+    return deduped;
+  }
+
+  static DateTime _parseDateOnly(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '');
+    final local = parsed?.toLocal() ?? DateTime.now();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  static String _historyPeriodKey(DateTime start, DateTime end) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    final startKey = '${start.year}-${two(start.month)}-${two(start.day)}';
+    final endKey = '${end.year}-${two(end.month)}-${two(end.day)}';
+    return '$startKey/$endKey';
+  }
+
+  static bool _shouldPreferHistory(BudgetHistory candidate, BudgetHistory existing) {
+    final createdCompare = candidate.createdAt.compareTo(existing.createdAt);
+    if (createdCompare != 0) return createdCompare > 0;
+    return candidate.id > existing.id;
   }
 }

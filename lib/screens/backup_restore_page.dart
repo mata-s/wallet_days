@@ -21,7 +21,7 @@ class BackupRestorePage extends StatefulWidget {
   State<BackupRestorePage> createState() => _BackupRestorePageState();
 }
 
-class _BackupRestorePageState extends State<BackupRestorePage> {
+class _BackupRestorePageState extends State<BackupRestorePage> with WidgetsBindingObserver {
   bool _isSigningIn = false;
   bool _isSyncingAccountData = false;
   late bool _showSignUp;
@@ -37,7 +37,21 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
   String? _errorMessage;
   String? _pendingLinkedProvider;
+  String? _pendingOAuthLoginProvider;
   bool _shouldSyncAfterAuthChange = false;
+  int _oauthAttemptId = 0;
+  Future<bool> _isCurrentAccountLinked() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return false;
+
+    final row = await Supabase.instance.client
+        .from('profiles')
+        .select('is_account_linked')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    return row?['is_account_linked'] == true;
+  }
 
   Future<void> _loadLanguagePreference() async {
     final prefs = await SharedPreferences.getInstance();
@@ -61,6 +75,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadLanguagePreference();
     _showSignUp = widget.showSignUpTab ? widget.initialIsSignUp : false;
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
@@ -88,6 +103,25 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
     if (_showSignUp) {
       if (user.isAnonymous) return;
+    } else if (_pendingOAuthLoginProvider != null) {
+      final isLinked = await _isCurrentAccountLinked();
+      if (!isLinked) {
+        await Supabase.instance.client.auth.signOut();
+        if (!mounted) return;
+        setState(() {
+          _isSigningIn = false;
+          _isSyncingAccountData = false;
+          _shouldSyncAfterAuthChange = false;
+          _pendingOAuthLoginProvider = null;
+          _pendingLinkedProvider = null;
+          _infoMessage = null;
+          _errorMessage = _t(
+            'このGoogle / Appleアカウントは登録されていません。',
+            'This Google / Apple account is not registered.',
+          );
+        });
+        return;
+      }
     }
 
     await _syncAccountDataIfNeeded();
@@ -95,10 +129,26 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (!_shouldSyncAfterAuthChange) return;
+    if (_isSyncingAccountData) return;
+
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      if (!_shouldSyncAfterAuthChange) return;
+      if (_isSyncingAccountData) return;
+
+      _handleAuthStateChanged();
+    });
   }
 
   bool _isValidEmail(String email) {
@@ -153,6 +203,8 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
         await _markAccountLinked(_pendingLinkedProvider!);
         _pendingLinkedProvider = null;
       }
+      _pendingOAuthLoginProvider = null;
+      _oauthAttemptId++;
 
       if (!widget.showSignUpTab) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -178,24 +230,32 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
         _isSyncingAccountData = false;
         _isSigningIn = false;
         _shouldSyncAfterAuthChange = false;
+        _pendingOAuthLoginProvider = null;
       });
     }
   }
 
   Future<void> _signInWithProvider(OAuthProvider provider) async {
     const redirectTo = 'walletdays://login-callback';
+    final attemptId = ++_oauthAttemptId;
     setState(() {
       _isSigningIn = true;
       _errorMessage = null;
       _infoMessage = null;
       _clearFieldErrors();
       _pendingLinkedProvider = null;
+      _pendingOAuthLoginProvider = null;
       _shouldSyncAfterAuthChange = true;
     });
 
     try {
       final auth = Supabase.instance.client.auth;
       final user = auth.currentUser;
+      final providerKey = provider == OAuthProvider.apple
+          ? 'apple'
+          : provider == OAuthProvider.google
+              ? 'google'
+              : 'oauth';
 
       if (_showSignUp) {
         if (user == null) {
@@ -207,12 +267,9 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
             'This sign up method can be used when keeping your current data.',
           ));
         }
-        _pendingLinkedProvider = provider == OAuthProvider.apple
-            ? 'apple'
-            : provider == OAuthProvider.google
-                ? 'google'
-                : 'oauth';
-        await auth.linkIdentity(
+        _pendingLinkedProvider = providerKey;
+        _pendingOAuthLoginProvider = null;
+        await auth.signInWithOAuth(
           provider,
           redirectTo: redirectTo,
           authScreenLaunchMode: LaunchMode.externalApplication,
@@ -225,6 +282,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
           );
         });
       } else {
+        _pendingOAuthLoginProvider = providerKey;
         await auth.signInWithOAuth(
           provider,
           redirectTo: redirectTo,
@@ -246,9 +304,29 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
             : _t('ログインに失敗しました', 'Log in failed.');
         _isSigningIn = false;
         _shouldSyncAfterAuthChange = false;
+        _pendingOAuthLoginProvider = null;
       });
       return;
     }
+
+    Future.delayed(const Duration(seconds: 60), () {
+      if (!mounted) return;
+      if (attemptId != _oauthAttemptId) return;
+      if (!_isSigningIn) return;
+      if (_isSyncingAccountData) return;
+
+      setState(() {
+        _isSigningIn = false;
+        _shouldSyncAfterAuthChange = false;
+        _pendingLinkedProvider = null;
+        _pendingOAuthLoginProvider = null;
+        _infoMessage = null;
+        _errorMessage = _t(
+          'ログインが完了しませんでした。もう一度お試しください。',
+          'Log in was not completed. Please try again.',
+        );
+      });
+    });
   }
 
   Future<void> _submitWithEmail() async {
@@ -258,6 +336,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       _infoMessage = null;
       _clearFieldErrors();
       _pendingLinkedProvider = null;
+      _pendingOAuthLoginProvider = null;
       _shouldSyncAfterAuthChange = false;
     });
 
@@ -337,6 +416,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       setState(() {
         _shouldSyncAfterAuthChange = false;
         _pendingLinkedProvider = null;
+        _pendingOAuthLoginProvider = null;
         final message = e.message.toLowerCase();
 
         if (_showSignUp) {
@@ -361,6 +441,7 @@ class _BackupRestorePageState extends State<BackupRestorePage> {
       setState(() {
         _shouldSyncAfterAuthChange = false;
         _pendingLinkedProvider = null;
+        _pendingOAuthLoginProvider = null;
         _errorMessage = _showSignUp ? e.toString() : _t('メールログインに失敗しました', 'Email log in failed.');
       });
     } finally {

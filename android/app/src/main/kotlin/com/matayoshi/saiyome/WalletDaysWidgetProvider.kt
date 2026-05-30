@@ -55,13 +55,22 @@ class WalletDaysWidgetProvider : AppWidgetProvider() {
             val danger2Remaining = prefs.getInt("danger_category_2_remaining", 0)
             val danger2Badge = prefs.getString("danger_category_2_badge", "") ?: ""
 
-            fun formatYen(amount: Int): String {
-                return String.format("%,d円", amount)
+            val widgetLang = prefs.getString("widget_lang", "") ?: ""
+            val isEnglish = widgetLang == "en" ||
+                remainingText.startsWith("$") ||
+                remainingTitle.contains("Remaining", ignoreCase = true)
+
+            fun formatMoney(amount: Int): String {
+                return if (isEnglish) {
+                    String.format("$%,.2f", amount / 100.0)
+                } else {
+                    String.format("%,d円", amount)
+                }
             }
 
             fun usageText(remaining: Int, total: Int): String {
                 val used = total - remaining
-                return "${formatYen(used)} / ${formatYen(total)}"
+                return "${formatMoney(used)} / ${formatMoney(total)}"
             }
 
             fun usagePercent(remaining: Int, total: Int): Int {
@@ -73,7 +82,11 @@ class WalletDaysWidgetProvider : AppWidgetProvider() {
 
             fun dangerText(name: String, remaining: Int, badge: String): String {
                 val prefix = if (badge.isBlank()) "•" else badge
-                return "$prefix $name あと${formatYen(remaining)}"
+                return if (isEnglish) {
+                    "$prefix $name left ${formatMoney(remaining)}"
+                } else {
+                    "$prefix $name あと${formatMoney(remaining)}"
+                }
             }
 
             views.setTextViewText(

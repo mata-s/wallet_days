@@ -82,6 +82,9 @@ class _HomePageState extends State<HomePage> {
   bool _isAchievementModalShowing = false;
   String? _languageOverride; // 'ja' or 'en'
   bool _showBudgetHint = false;
+  void Function(CustomerInfo)? _customerInfoUpdateListener;
+
+  bool _isVerifyingPremiumDowngrade = false;
 
   User? get _currentUser => Supabase.instance.client.auth.currentUser;
 
@@ -100,11 +103,65 @@ void initState() {
   _loadLanguagePreference();
   _initPage();
   _initBudgetHint();
+  _customerInfoUpdateListener = (customerInfo) {
+    final isPremium = customerInfo.entitlements.active.containsKey('premium');
+    debugPrint(
+      '[HomePage] customerInfo update isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+    );
+    if (!mounted) return;
+    final wasPremium = _isPremium;
+
+    if (!isPremium && wasPremium) {
+      debugPrint('[HomePage] received premium=false while currently premium=true. Verifying before downgrade.');
+      _verifyPremiumDowngrade();
+      return;
+    }
+
+    setState(() {
+      _isPremium = isPremium;
+      _hasLoadedPremium = true;
+    });
+    if (isPremium && !wasPremium) {
+      _loadProfileTitleIfNeeded();
+      _loadStreakInsights();
+    }
+  };
+  Purchases.addCustomerInfoUpdateListener(_customerInfoUpdateListener!);
 }
 
 Future<void> _initPage() async {
   await ensureDebugTimeLoaded();
   await _loadInitialData();
+}
+
+Future<void> _verifyPremiumDowngrade() async {
+  if (_isVerifyingPremiumDowngrade) return;
+  _isVerifyingPremiumDowngrade = true;
+
+  try {
+    await Future.delayed(const Duration(milliseconds: 900));
+    await Purchases.invalidateCustomerInfoCache();
+    final customerInfo = await Purchases.getCustomerInfo();
+    final isPremium = customerInfo.entitlements.active.containsKey('premium');
+    debugPrint(
+      '[HomePage] verify premium downgrade isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _isPremium = isPremium;
+      _hasLoadedPremium = true;
+    });
+
+    if (isPremium) {
+      await _loadProfileTitleIfNeeded();
+      await _loadStreakInsights();
+    }
+  } catch (e) {
+    debugPrint('[HomePage] verify premium downgrade error=$e');
+  } finally {
+    _isVerifyingPremiumDowngrade = false;
+  }
 }
 
 
@@ -168,6 +225,10 @@ Future<void> _updateHomeWidgetFromCurrentState() async {
 
   @override
   void dispose() {
+    final listener = _customerInfoUpdateListener;
+    if (listener != null) {
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    }
     _categoryScrollController.dispose();
     super.dispose();
   }
@@ -1112,17 +1173,25 @@ Future<void> _syncBudgetHistoryIfNeeded() async {
     }
   }
 
-  Future<void> _loadPremiumStatus() async {
-    if (_hasLoadedPremium) return;
+  Future<void> _loadPremiumStatus({bool force = false}) async {
+    if (_hasLoadedPremium && !force) return;
 
     try {
+      if (force) {
+        await Purchases.invalidateCustomerInfoCache();
+      }
       final customerInfo = await Purchases.getCustomerInfo();
+      final isPremium = customerInfo.entitlements.active.containsKey('premium');
+      debugPrint(
+        '[HomePage] loadPremiumStatus force=$force isPremium=$isPremium active=${customerInfo.entitlements.active.keys.toList()}',
+      );
       if (!mounted) return;
       setState(() {
-        _isPremium = customerInfo.entitlements.active.containsKey('premium');
+        _isPremium = isPremium;
         _hasLoadedPremium = true;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[HomePage] loadPremiumStatus error=$e');
       if (!mounted) return;
       setState(() {
         _isPremium = false;
@@ -1753,7 +1822,7 @@ Widget _buildFullScreenReceiptOverlay({
                             MaterialPageRoute(builder: (_) => const PremiumPage()),
                           );
                           _hasLoadedPremium = false;
-                          await _loadPremiumStatus();
+                          await _loadPremiumStatus(force: true);
                           if (!mounted) return;
                           setState(() {});
                           return;
@@ -1792,7 +1861,7 @@ Widget _buildFullScreenReceiptOverlay({
                           ),
                         );
                         _hasLoadedPremium = false;
-                        await _loadPremiumStatus();
+                        await _loadPremiumStatus(force: true);
                         if (!mounted) return;
                         setState(() {});
                       },
@@ -2041,7 +2110,7 @@ Widget _buildFullScreenReceiptOverlay({
                             MaterialPageRoute(builder: (_) => const PremiumPage()),
                           );
                           _hasLoadedPremium = false;
-                          await _loadPremiumStatus();
+                          await _loadPremiumStatus(force: true);
                           if (!mounted) return;
                           setState(() {});
                           return;
@@ -2119,10 +2188,51 @@ Widget _buildFullScreenReceiptOverlay({
                       onTap: () async {
                         Navigator.pop(context);
 
+                        if (!context.mounted) return;
+
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (dialogContext) {
+                            return Dialog(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 3,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Text(
+                                      _t('購入情報を確認しています…', 'Restoring purchases...'),
+                                      style: theme.textTheme.bodyLarge?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+
                         try {
                           await Purchases.restorePurchases();
                           _hasLoadedPremium = false;
                           await _loadPremiumStatus();
+
+                          if (context.mounted) {
+                            Navigator.of(context, rootNavigator: true).pop();
+                          }
 
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -2135,6 +2245,10 @@ Widget _buildFullScreenReceiptOverlay({
                             ),
                           );
                         } catch (_) {
+                          if (context.mounted) {
+                            Navigator.of(context, rootNavigator: true).pop();
+                          }
+
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -2300,7 +2414,7 @@ Widget _buildFullScreenReceiptOverlay({
                         );
                         if (!mounted) return;
                         _hasLoadedPremium = false;
-                        await _loadPremiumStatus();
+                        await _loadPremiumStatus(force: true);
                         await _loadInitialData();
                       },
                     ),
