@@ -5,7 +5,7 @@ A budgeting app that visualizes how long your money will last based on your curr
 Instead of focusing on strict budgeting, Wallet Days helps users understand their spending habits through a simple and intuitive experience.
 
 🍎 App Store  
-[https://apps.apple.com/jp/app/財布の余命/idxxxxxxxx](https://apps.apple.com/jp/app/%E8%B2%A1%E5%B8%83%E3%81%AE%E4%BD%99%E5%91%BD/id6760900312)
+[Download on the App Store](https://apps.apple.com/jp/app/%E8%B2%A1%E5%B8%83%E3%81%AE%E4%BD%99%E5%91%BD/id6760900312)
 
 🤖 Google Play  
 Closed Testing
