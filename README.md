@@ -4,6 +4,12 @@ A budgeting app that visualizes how long your money will last based on your curr
 
 Instead of focusing on strict budgeting, Wallet Days helps users understand their spending habits through a simple and intuitive experience.
 
+🍎 App Store  
+[https://apps.apple.com/jp/app/財布の余命/idxxxxxxxx](https://apps.apple.com/jp/app/%E8%B2%A1%E5%B8%83%E3%81%AE%E4%BD%99%E5%91%BD/id6760900312)
+
+🤖 Google Play  
+Closed Testing
+
 ---
 
 ## Screenshots
@@ -64,18 +70,6 @@ Instead of focusing on strict budgeting, Wallet Days helps users understand thei
 
 ---
 
-## Platforms
-
-### App Store
-
-Published
-
-### Google Play
-
-Closed Testing
-
----
-
 ## Why I Built This
 
 Many budgeting apps focus on detailed expense management.
@@ -95,7 +89,7 @@ The goal was to create a budgeting experience that feels approachable and sustai
 - Developed backup and restore functionality
 - Added multilingual support (Japanese / English)
 - Implemented home screen widgets
-- Managed App Store and Google Play releases
+- Managed App Store release and Google Play closed testing
 
 ---
 
@@ -107,27 +101,3 @@ Flutter Developer from Japan
 
 GitHub:
 https://github.com/mata-s
-
----
-
-## Other Projects
-
-### Novel Day
-
-A diary application focused on recording daily stories and memories.
-
-Tech:
-Flutter, Supabase, Edge Functions, Cloud Functions, RevenueCat, AI API Integration
-
-Published on:
-App Store / Google Play
-
-### Baseball Net (b_net)
-
-A baseball community application where users can share baseball-related posts and connect with other fans.
-
-Tech:
-Flutter, Firebase, Cloud Functions, RevenueCat
-
-Published on:
-App Store / Google Play
