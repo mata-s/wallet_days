@@ -14,15 +14,13 @@ Closed Testing
 
 ## Screenshots
 
-## Screenshots
-
 | Home | Rank |
 |------|------|
-| ￼ | ￼ |
+| ![](images/home.png) | ![](images/rank.png) |
 
 | Monthly Report | Widget |
 |------|------|
-| ￼ | ￼ |
+| ![](images/report.jpg) | ![](images/widget.png) |
 
 ---
 
