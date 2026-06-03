@@ -14,7 +14,9 @@ Closed Testing
 
 ## Screenshots
 
-| Home | Analysis |
+## Screenshots
+
+| Home | Rank |
 |------|------|
 | ￼ | ￼ |
 
